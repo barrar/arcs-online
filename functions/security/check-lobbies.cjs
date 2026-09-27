@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const { initializeApp, deleteApp } = require('firebase/app');
-const { getAuth, connectAuthEmulator, signInAnonymously } = require('firebase/auth');
+const { getAuth, connectAuthEmulator, signInAnonymously, EmailAuthProvider, linkWithCredential } = require('firebase/auth');
 const { getFunctions, connectFunctionsEmulator, httpsCallable } = require('firebase/functions');
 const { getFirestore, connectFirestoreEmulator, doc, getDoc } = require('firebase/firestore');
 
@@ -26,6 +26,10 @@ async function check() {
       timer: { mode: 'live', minutes: 5 },
     });
     assert.match(created.code, /^[A-Z2-9]{8}$/);
+    const guestUid = a.auth.currentUser.uid;
+    await linkWithCredential(a.auth.currentUser,
+      EmailAuthProvider.credential(`arcs-test-${Date.now()}@example.invalid`, 'local-test-only-password'));
+    assert.equal(a.auth.currentUser.uid, guestUid);
     const joins = await Promise.allSettled([
       b.call('joinLobby', { code: created.code, displayName: 'B' }),
       c.call('joinLobby', { code: created.code, displayName: 'C' }),

@@ -5,7 +5,7 @@ Flutter and Firebase groundwork for a multiplayer adaptation of the **ARCS base 
 ## What works locally
 
 - Responsive Flutter lobby UI with an original space theme, public listing, private invite codes and links, ready status, and a visual board preview.
-- Guest sign-in and client flows for linking an email/password or Google credential. Cloud provider activation and mobile OAuth configuration are still required.
+- Guest sign-in and client flows for linking an email/password or Google credential. Anonymous and email/password providers are active; local emulator testing confirms email linking preserves lobby membership. Google provider and mobile OAuth configuration are still required.
 - Firebase callable functions for creating, joining, leaving, and readying lobbies. Mutations are validated and transactional. Hosts can choose a 2–10-minute live timer or a 24/48-hour asynchronous timer.
 - Pure rules modules for the 12 base setup layout choices, map topology, action-card/round flow, and ambition scoring, with unit tests. Starting-piece placement is not encoded yet. A unanimous overdue kick rule is implemented as a pure reducer but is not connected to live games yet.
 - A dated snapshot of the official 25 Guild and 6 Vox base Court cards, available in the in-app card browser. Card effects are not yet executable.
@@ -17,7 +17,7 @@ See [rules coverage](docs/rules-coverage.md) for the exact implemented and missi
 
 Production Firebase project: `arcs-online-jeremiah-2026` (`us-west1`). The web, Android, and iOS apps are registered, and the default Firestore database exists. Local development uses Firebase emulators and the Flutter `USE_EMULATORS` define; it does not use production data. No server credentials belong in this repository.
 
-The [hosted web preview](https://arcs-online-jeremiah-2026.web.app) is live. Guest sign-in, public/private lobbies, invite codes, ready status, the card library, and the board preview work in production. A two-guest private lobby flow passed a production smoke test on 2026-09-27. The local Auth, Functions, and Firestore emulator flow also passed a multiplayer lobby integration test. Matches remain disabled because the complete ARCS rules engine is unfinished.
+The [hosted web preview](https://arcs-online-jeremiah-2026.web.app) is live. Guest sign-in, public/private lobbies, invite codes, ready status, the card library, and the board preview work in production. A two-guest private lobby flow passed a production smoke test on 2026-09-27. The local Auth, Functions, and Firestore emulator flow also passed a multiplayer lobby integration test, including guest-to-email linking. Matches remain disabled because the complete ARCS rules engine is unfinished.
 
 The public Firebase app identifiers are in `lib/firebase_options.dart`, `android/app/google-services.json`, and `ios/Runner/GoogleService-Info.plist`. Anonymous and email/password sign-in are enabled through `firebase.json`; Google linking still needs a support email and provider configuration. The project is on Blaze and the five lobby Functions are deployed. The hosted preview explicitly does not claim to be a playable game. See [deployment steps](docs/deployment.md).
 
