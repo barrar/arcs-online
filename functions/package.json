@@ -1,0 +1,27 @@
+{
+  "name": "arcs-online-functions",
+  "private": true,
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:firestore": "node security/check-firestore.cjs",
+    "test:lobbies": "node security/check-lobbies.cjs",
+    "check": "npm run build && npm test"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "firebase-admin": "^14.5.0",
+    "firebase-functions": "^7.4.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "@types/node": "^22.18.0",
+    "firebase": "^12.19.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

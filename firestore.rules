@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function inGame(gameId) {
+      return signedIn() && request.auth.uid in get(/databases/$(database)/documents/games/$(gameId)).data.memberIds;
+    }
+    match /lobbies/{lobbyId} {
+      allow get: if signedIn() && (resource.data.visibility == 'public' || request.auth.uid in resource.data.memberIds);
+      allow list: if signedIn() && resource.data.visibility == 'public' && resource.data.status == 'waiting';
+      allow write: if false;
+    }
+    match /games/{gameId} {
+      allow get, list: if signedIn() && request.auth.uid in resource.data.memberIds;
+      allow write: if false;
+      match /hands/{userId} {
+        allow get: if signedIn() && request.auth.uid == userId && inGame(gameId);
+        allow list, write: if false;
+      }
+      match /events/{eventId} {
+        allow read: if inGame(gameId);
+        allow write: if false;
+      }
+      match /{other=**} { allow read, write: if false; }
+    }
+    match /profiles/{userId} {
+      allow get: if signedIn() && request.auth.uid == userId;
+      allow list, write: if false;
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

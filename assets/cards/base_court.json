@@ -1,0 +1,254 @@
+{
+  "source": "https://cards.buriedgiant.com/",
+  "retrieved": "2026-09-25",
+  "cards": [
+    {
+      "id": "ARCS-BC01",
+      "name": "Loyal Engineers",
+      "type": "guild",
+      "suit": "material",
+      "text": "If you **Provoke Outrage**, keep this card.\n \nYou may spend any resources as Material. You ignore Outrage when spending Material for its Prelude action.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC01.webp"
+    },
+    {
+      "id": "ARCS-BC02",
+      "name": "Mining Interest",
+      "type": "guild",
+      "suit": "material",
+      "text": "**Manufacture (Build):** Gain 1 Material.\n \n**Prelude:** You may discard this to gain Material up to your number of empty resource slots. If the Material supply empties, steal the Material instead.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC02.webp"
+    },
+    {
+      "id": "ARCS-BC03",
+      "name": "Material Cartel",
+      "type": "guild",
+      "suit": "material",
+      "text": "You keep the Material supply on here. *(You add it to Tycoon but can't spend it.)*\n \nAfter **scoring**, Rivals discard all Material. **Prelude:** You may discard this to steal 1 Material.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC03.webp"
+    },
+    {
+      "id": "ARCS-BC04",
+      "name": "Admin Union",
+      "type": "guild",
+      "suit": "material",
+      "text": "**Prelude:** You may place this card next to a face-up played Administration card. When the round ends, draw that card into your hand and discard this card.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC04.webp"
+    },
+    {
+      "id": "ARCS-BC05",
+      "name": "Construction Union",
+      "type": "guild",
+      "suit": "material",
+      "text": "**Prelude:** You may place this card next to a face-up played Construction card. When the round ends, draw that card into your hand and discard this card.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC05.webp"
+    },
+    {
+      "id": "ARCS-BC06",
+      "name": "Fuel Cartel",
+      "type": "guild",
+      "suit": "fuel",
+      "text": "You keep the Fuel supply on here. *(You add it to Tycoon but can't spend it.)*\n \nAfter **scoring**, Rivals discard all Fuel.\n \n**Prelude:** You may discard this to steal 1 Fuel.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC06.webp"
+    },
+    {
+      "id": "ARCS-BC07",
+      "name": "Loyal Pilots",
+      "type": "guild",
+      "suit": "fuel",
+      "text": "If you **Provoke Outrage**, keep this card.\n \nYou may spend any resources as Fuel. You ignore Outrage when spending Fuel for its Prelude action.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC07.webp"
+    },
+    {
+      "id": "ARCS-BC08",
+      "name": "Gatekeepers",
+      "type": "guild",
+      "suit": "fuel",
+      "text": "When you **battle** in a gate, you may collect 2 more dice.\n \n**Prelude:** You may discard this to place 1 ship in each gate *(unless out of play)*.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC08.webp"
+    },
+    {
+      "id": "ARCS-BC09",
+      "name": "Shipping Interest",
+      "type": "guild",
+      "suit": "fuel",
+      "text": "**Synthesize (Build):** Gain 1 Fuel.\n \n**Prelude:** You may discard this to gain Fuel up to your number of empty resource slots. If the Fuel supply empties, steal the Fuel instead.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC09.webp"
+    },
+    {
+      "id": "ARCS-BC10",
+      "name": "Spacing Union",
+      "type": "guild",
+      "suit": "fuel",
+      "text": "**Prelude:** You may place this card next to a face-up played Mobilization card. When the round ends, draw that card into your hand and discard this card.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC10.webp"
+    },
+    {
+      "id": "ARCS-BC11",
+      "name": "Arms Union",
+      "type": "guild",
+      "suit": "weapon",
+      "text": "**Prelude:** You may place this card next to a face-up played Aggression card. When the round ends, draw that card into your hand and discard this card.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC11.webp"
+    },
+    {
+      "id": "ARCS-BC12",
+      "name": "Prison Wardens",
+      "type": "guild",
+      "suit": "weapon",
+      "text": "**Pressgang (Build):** Return any number of your Captives to gain any 1 resource for each.\n \n**Execute (Influence):** Move any number of your Captives to your Trophies.\n \n**Prelude:** You may discard this to place 3 ships in a system you control.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC12.webp"
+    },
+    {
+      "id": "ARCS-BC13",
+      "name": "Skirmishers",
+      "type": "guild",
+      "suit": "weapon",
+      "text": "After you roll in **battle**, you may reroll a number of skirmish dice up to your total Weapon icons from resources and cards.\n \n**Prelude:** You may discard this to place 3 ships in a system you control.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC13.webp"
+    },
+    {
+      "id": "ARCS-BC14",
+      "name": "Court Enforcers",
+      "type": "guild",
+      "suit": "weapon",
+      "text": "**Abduct (Battle):** Capture all Rival agents from a card in the Court that has fewer Rival agents than your total Weapon icons from resources and cards.\n \n**Prelude:** You may discard this to place 3 ships in a system you control.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC14.webp"
+    },
+    {
+      "id": "ARCS-BC15",
+      "name": "Loyal Marines",
+      "type": "guild",
+      "suit": "weapon",
+      "text": "If you **Provoke Outrage**, keep this card.\n \nYou may spend any resources as Weapons. You ignore Outrage when spending Weapons for their Prelude action.\n \n**Prelude:** You may discard this to place 3 ships in a system you control.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC15.webp"
+    },
+    {
+      "id": "ARCS-BC16",
+      "name": "Lattice Spies",
+      "type": "guild",
+      "suit": "psionic",
+      "text": "**Prelude:** Before any other actions, you may discard this to seize the initiative.\n \n*You can't seize the initiative if you have it or if it's already seized this round!*",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC16.webp"
+    },
+    {
+      "id": "ARCS-BC17",
+      "name": "Farseers",
+      "type": "guild",
+      "suit": "psionic",
+      "text": "When you **declare an ambition**, look at a Rival’s hand. You may swap 1 card with them.\n \nPrelude: You may discard this and any number of cards from your hand. Draw the same number of cards *(including Farseers)* from the bottom of the action discard pile.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC17.webp"
+    },
+    {
+      "id": "ARCS-BC18",
+      "name": "Secret Order",
+      "type": "guild",
+      "suit": "psionic",
+      "text": "When you **declare** Keeper or Empath, do not place the zero marker.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC18.webp"
+    },
+    {
+      "id": "ARCS-BC19",
+      "name": "Loyal Empaths",
+      "type": "guild",
+      "suit": "psionic",
+      "text": "If you **Provoke Outrage**, keep this card.\n \nYou may spend any resources as Psionic. You ignore Outrage when spending Psionic for its Prelude action.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC19.webp"
+    },
+    {
+      "id": "ARCS-BC20",
+      "name": "Silver-Tongues",
+      "type": "guild",
+      "suit": "psionic",
+      "text": "**Prelude:** You may discard this to steal a Guild card or resource.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC20.webp"
+    },
+    {
+      "id": "ARCS-BC21",
+      "name": "Loyal Keepers",
+      "type": "guild",
+      "suit": "relic",
+      "text": "If you **Provoke Outrage**, keep this card.\n \nYou may spend any resources as Relics. You ignore Outrage when spending Relics for their Prelude action.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC21.webp"
+    },
+    {
+      "id": "ARCS-BC22",
+      "name": "Sworn Guardians",
+      "type": "guild",
+      "suit": "relic",
+      "text": "Rivals cannot steal your resources and other Guild cards. *(In battle they can steal this first and then spend `symbol:key`.)*\n \nIf this card is stolen, bury it. *(Place it on the bottom of the Court deck.)*",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC22.webp"
+    },
+    {
+      "id": "ARCS-BC23",
+      "name": "Elder Broker",
+      "type": "guild",
+      "suit": "relic",
+      "text": "**Trade (Tax):** Choose a Rival city you control. Swap 1 resource with that Rival—take a resource of that city type from them, and give them a resource they don't have.\n \n**Prelude:** You may discard this to gain 1 Material, 1 Fuel, and 1 Weapon.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC23.webp"
+    },
+    {
+      "id": "ARCS-BC24",
+      "name": "Relic Fence",
+      "type": "guild",
+      "suit": "relic",
+      "text": "**Prelude:** Once per turn, you may discard 1 resource to gain 1 Relic.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC24.webp"
+    },
+    {
+      "id": "ARCS-BC25",
+      "name": "Galactic Bards",
+      "type": "guild",
+      "suit": "relic",
+      "text": "When you **Surpass** or **Pivot**, before taking ***any*** actions, you may declare the ambition on your played card if an ambition has not been declared yet this round. Do not place the zero marker.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC25.webp"
+    },
+    {
+      "id": "ARCS-BC26",
+      "name": "Mass Uprising",
+      "type": "vox",
+      "suit": null,
+      "text": "**When Secured:** Choose a cluster on the map. You place 1 ship in each system of that cluster. Discard this card.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC26.webp"
+    },
+    {
+      "id": "ARCS-BC27",
+      "name": "Populist Demands",
+      "type": "vox",
+      "suit": null,
+      "text": "**When Secured:** You may declare any ambition. *(An ambition marker must be Available.)* Discard this card.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC27.webp"
+    },
+    {
+      "id": "ARCS-BC28",
+      "name": "Outrage Spreads",
+      "type": "vox",
+      "suit": null,
+      "text": "**When Secured:** You may choose an Outrage type. Each player *(even you)* must Provoke Outrage of that type. Discard this card.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC28.webp"
+    },
+    {
+      "id": "ARCS-BC29",
+      "name": "Song of Freedom",
+      "type": "vox",
+      "suit": null,
+      "text": "**When Secured:** You may return ***any*** one city you control to its player board. If you do, you may seize the initiative. Shuffle this card into the Court deck.\n \n*You can't seize the initiative if you have it or if it's already seized this round!*",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC29.webp"
+    },
+    {
+      "id": "ARCS-BC30",
+      "name": "Guild Struggle",
+      "type": "vox",
+      "suit": null,
+      "text": "**When Secured:** You may steal 1 Guild card from a Rival. Shuffle all Guild cards from the Court discard pile into the Court deck. Discard Guild Struggle.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC30.webp"
+    },
+    {
+      "id": "ARCS-BC31",
+      "name": "Call to Action",
+      "type": "vox",
+      "suit": null,
+      "text": "**When Secured:** Draw 1 action card from the bottom of the action discard pile. Discard Call to Action.",
+      "image": "https://cardcdn.buriedgiant.com/cards/arcs/en-US/BC31.webp"
+    }
+  ]
+}
