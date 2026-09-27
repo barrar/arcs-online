@@ -7,7 +7,7 @@ Flutter and Firebase groundwork for a multiplayer adaptation of the **ARCS base 
 - Responsive Flutter lobby UI with an original space theme, public listing, private invite codes and links, ready status, and a visual board preview.
 - Guest sign-in and client flows for linking an email/password or Google credential. Cloud provider activation and mobile OAuth configuration are still required.
 - Firebase callable functions for creating, joining, leaving, and readying lobbies. Mutations are validated and transactional. Hosts can choose a 2–10-minute live timer or a 24/48-hour asynchronous timer.
-- Pure rules modules for action-card/round flow and ambition scoring, with unit tests. A unanimous overdue kick rule is implemented as a pure reducer but is not connected to live games yet.
+- Pure rules modules for the 12 base setup layout choices, map topology, action-card/round flow, and ambition scoring, with unit tests. Starting-piece placement is not encoded yet. A unanimous overdue kick rule is implemented as a pure reducer but is not connected to live games yet.
 - A dated snapshot of the official 25 Guild and 6 Vox base Court cards, available in the in-app card browser. Card effects are not yet executable.
 - Firestore rules limiting access to lobbies, games, and each player's hand. The emulator authorization test covers private data and denied client writes.
 
@@ -54,6 +54,6 @@ The web release build and Flutter analyzer passed on 2026-09-25. Mobile builds a
 
 The implementation is based on the [official base rulebook, August 27, 2025](https://buriedgiant.com/arcs/Arcs_Base_Rulebook.pdf), [publisher rules and errata](https://rules.buriedgiant.com/), and [publisher card library](https://cards.buriedgiant.com/). The Court catalog was captured on 2026-09-25. Leaders & Lore and campaign content are outside the planned first release.
 
-The [haunt-roll-fail ARCS source](https://github.com/haunt-roll-fail/haunt-roll-fail/tree/main/haunt-roll-fail/arcs) is a useful MIT-licensed implementation reference. Its action-card pip table was cross-checked against the rulebook and credited in [third-party notices](THIRD_PARTY_NOTICES.md). It does not contain every base setup, so it is not treated as a substitute for the official rules.
+The [haunt-roll-fail ARCS source](https://github.com/haunt-roll-fail/haunt-roll-fail/tree/main/haunt-roll-fail/arcs) is a useful MIT-licensed implementation reference. Its action-card pip and map data were cross-checked against the rulebook and credited in [third-party notices](THIRD_PARTY_NOTICES.md). It does not contain every base setup, so it is not treated as a substitute for the official rules.
 
 The user also supplied a complete offline build of that game. The [reference audit](docs/reference-audit.md) records its asset inventory, the 12 setup diagrams it exposes, the five setups present in the readable source, and why the embedded artwork is not copied into this project.

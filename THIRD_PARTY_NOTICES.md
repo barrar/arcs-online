@@ -1,6 +1,6 @@
 # Third-party notices
 
-The action-card pip table in `functions/src/action_cards.ts` was cross-checked against [haunt-roll-fail's ARCS implementation](https://github.com/haunt-roll-fail/haunt-roll-fail/tree/d157b02/haunt-roll-fail/arcs) at commit `d157b02` (2025-12-13). That source is licensed under the MIT License:
+The action-card pip table in `functions/src/action_cards.ts` and the base map table in `functions/src/board.ts` were cross-checked against [haunt-roll-fail's ARCS implementation](https://github.com/haunt-roll-fail/haunt-roll-fail/tree/d157b02/haunt-roll-fail/arcs) at commit `d157b02` (2025-12-13). That source is licensed under the MIT License:
 
 Copyright (c) 2024 haunt-roll-fail
 
