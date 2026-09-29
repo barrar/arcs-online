@@ -28,6 +28,7 @@ class _GamePageState extends State<GamePage> {
   late final Stream<DocumentSnapshot<Map<String, dynamic>>> _game = widget.service.game(widget.gameId);
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _events = widget.service.events(widget.gameId);
   final Map<String, Stream<DocumentSnapshot<Map<String, dynamic>>>> _hands = {};
+  final GlobalKey _decisionKey = GlobalKey();
   late final Future<List<CourtCard>> _catalog = loadBaseCourt();
   late final Future<Map<String, CourtCard>> _courtCards = _catalog.then(
     (cards) => {for (final card in cards) card.id: card});
@@ -38,6 +39,7 @@ class _GamePageState extends State<GamePage> {
   String? _bardAmbition;
   String? _extraCard;
   bool _busy = false;
+  bool _showAllEvents = false;
   String? _failedCommandJson;
   String? _failedCommandId;
   Timer? _refreshClock;
@@ -115,6 +117,7 @@ class _GamePageState extends State<GamePage> {
     final isTurn = actorUid == uid && game['status'] == 'playing';
     final selected = _selectedSystem;
     final status = game['status'] as String;
+    final decision = _decisionPrompt(game, players, uid, isTurn);
     return Column(
       children: [
         Padding(
@@ -138,32 +141,89 @@ class _GamePageState extends State<GamePage> {
             ],
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 20, 10),
+          child: Semantics(liveRegion: true, child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: (isTurn ? gold : cyan).withValues(alpha: .12),
+              border: Border.all(color: (isTurn ? gold : cyan).withValues(alpha: .45)),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(children: [
+              Icon(isTurn ? Icons.bolt : Icons.hourglass_top, color: isTurn ? gold : cyan, size: 20),
+              const SizedBox(width: 10),
+              Expanded(child: Text(decision, maxLines: 2, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700))),
+              TextButton(onPressed: _scrollToDecision,
+                child: Text(isTurn ? 'Go to action' : 'View hand')),
+            ]),
+          )),
+        ),
         Expanded(
           child: LayoutBuilder(builder: (context, constraints) {
             final wide = constraints.maxWidth >= 980;
             final board = _ReachBoard(game: game, selectedSystem: selected,
               onSelect: (systemId) => setState(() => _selectedSystem = systemId));
-            final rail = _rail(game, hand, players, uid, isTurn);
+            final rail = _rail(game, hand, players, uid, isTurn, wide);
             return wide
                 ? Row(children: [Expanded(flex: 3, child: board), SizedBox(width: 400, child: rail)])
                 : ListView(children: [SizedBox(height: math.min(constraints.maxWidth, 640), child: board),
-                    SizedBox(height: 900, child: rail)]);
+                    rail]);
           }),
         ),
       ],
     );
   }
 
-  Widget _rail(Map<String, dynamic> game, Map<String, dynamic> hand, Map<String, dynamic> players,
+  void _scrollToDecision() {
+    final target = _decisionKey.currentContext;
+    if (target != null) {
+      Scrollable.ensureVisible(target,
+        duration: const Duration(milliseconds: 300), alignment: .08,
+        curve: Curves.easeOutCubic);
+    }
+  }
+
+  String _decisionPrompt(Map<String, dynamic> game, Map<String, dynamic> players,
       String uid, bool isTurn) {
+    if (game['status'] != 'playing') return 'The match has ended. Review the result and event history.';
+    if (!isTurn) {
+      final actor = (players[game['actorUid']] as Map?)?['name'] ?? 'another player';
+      return 'Waiting for $actor. Your hand and the board are ready to review.';
+    }
+    if (game['mulliganPendingUid'] == uid) return 'Choose whether to keep or redraw your opening hand.';
+    if (game['pendingRecoveryUid'] == uid) return 'Place your recovery ships at a gate.';
+    if ((game['pendingResourceChoices'] as List).isNotEmpty) return 'Choose which resources to keep.';
+    if (game['farseersPendingUid'] == uid) return 'Finish the Farseers hand choice.';
+    if ((game['pendingVox'] as List).isNotEmpty) return 'Resolve the secured Vox effect.';
+    if (game['pendingBattle'] != null) return 'Resolve the battle before continuing.';
+    final round = game['round'] as Map;
+    if (round['playedThisTurn'] == true) {
+      final pips = round['remainingPips'] as int;
+      return '$pips action ${pips == 1 ? 'pip' : 'pips'} remaining. End your turn when ready.';
+    }
+    return round['lead'] == null
+      ? 'Lead with a card or pass initiative.'
+      : 'Play a card to copy, surpass, or pivot.';
+  }
+
+  Widget _rail(Map<String, dynamic> game, Map<String, dynamic> hand, Map<String, dynamic> players,
+      String uid, bool isTurn, bool scrollable) {
     final actorUid = game['actorUid'] as String?;
     final actor = actorUid == null ? null : (players[actorUid] as Map?);
     final round = (game['round'] as Map).cast<String, dynamic>();
     final cards = (hand['cards'] as List).cast<String>();
     final me = (players[uid] as Map).cast<String, dynamic>();
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 0, 20, 24),
-      children: [
+    final needsChoice = game['mulliganPendingUid'] == uid || game['pendingRecoveryUid'] == uid ||
+      game['farseersPendingUid'] == uid || game['pendingBattle'] != null ||
+      (game['pendingVox'] as List).isNotEmpty ||
+      (game['pendingResourceChoices'] as List).isNotEmpty || round['playedThisTurn'] == true;
+    final handPanel = _hand(game, round, cards, uid, isTurn);
+    final commandPanel = _turnControls(game, hand, round, me, uid, isTurn);
+    final decisionPanel = isTurn && needsChoice ? commandPanel : handPanel;
+    final secondaryPanel = isTurn && needsChoice ? handPanel : commandPanel;
+    final children = <Widget>[
         GlassPanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(game['status'] == 'finished' ? 'MATCH COMPLETE' : game['status'] == 'terminated'
             ? 'MATCH ENDED' : isTurn ? 'YOUR TURN' : 'WAITING FOR ${actor?['name'] ?? 'PLAYER'}',
@@ -180,20 +240,25 @@ class _GamePageState extends State<GamePage> {
               : 'An overdue player was removed. No official ARCS winner was awarded.')),
         ])),
         const SizedBox(height: 12),
+        KeyedSubtree(key: _decisionKey, child: decisionPanel),
+        const SizedBox(height: 12),
+        secondaryPanel,
+        if (_selectedSystem != null) ...[const SizedBox(height: 12), _systemDetails(game, _selectedSystem!)],
+        const SizedBox(height: 12),
         _roundPanel(game),
         if (game['lastScoring'] != null) ...[const SizedBox(height: 12), _lastScoring(game)],
         const SizedBox(height: 12),
         _personalBoard(game, me),
         const SizedBox(height: 12),
         _court(game, uid, isTurn),
-        if (_selectedSystem != null) ...[const SizedBox(height: 12), _systemDetails(game, _selectedSystem!)],
-        const SizedBox(height: 12),
-        _hand(game, round, cards, uid, isTurn),
-        const SizedBox(height: 12),
-        _turnControls(game, hand, round, me, uid, isTurn),
         const SizedBox(height: 12),
         _eventHistory(),
-      ],
+      ];
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 0, 20, 24),
+      shrinkWrap: !scrollable,
+      physics: scrollable ? null : const NeverScrollableScrollPhysics(),
+      children: children,
     );
   }
 
@@ -346,10 +411,16 @@ class _GamePageState extends State<GamePage> {
       const Text('YOUR ACTION CARDS', style: TextStyle(color: gold, fontWeight: FontWeight.w800, letterSpacing: 2)),
       const SizedBox(height: 10),
       if (cards.isEmpty) const Text('No cards in hand.', style: TextStyle(color: muted))
-      else Wrap(spacing: 7, runSpacing: 7, children: [for (final id in cards)
-        ChoiceChip(label: Text(_cardLabel(id)), selected: card == id,
-          onSelected: canPlay && round['playedThisTurn'] != true && !_busy
-            ? (_) => setState(() { _selectedCard = id; _ambition = null; _bardAmbition = null; _extraCard = null; }) : null)]),
+      else LayoutBuilder(builder: (context, constraints) {
+        final width = (constraints.maxWidth - 8) / 2;
+        return Wrap(spacing: 8, runSpacing: 8, children: [for (final id in cards)
+          SizedBox(width: width, child: _ActionCardTile(
+            id: id, selected: card == id,
+            onTap: canPlay && round['playedThisTurn'] != true && !_busy
+              ? () => setState(() { _selectedCard = id; _ambition = null; _bardAmbition = null; _extraCard = null; })
+              : null,
+          ))]);
+      }),
       if (canPlay && round['playedThisTurn'] != true && card != null) ...[
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(initialValue: mode, decoration: const InputDecoration(labelText: 'Play as'),
@@ -399,7 +470,7 @@ class _GamePageState extends State<GamePage> {
     final awaitingRecovery = game['pendingRecoveryUid'] == uid;
     final deadline = game['deadlineMs'] as int;
     return GlassPanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text('COMMAND', style: TextStyle(color: gold, fontWeight: FontWeight.w800, letterSpacing: 2)),
+      const Text('YOUR OPTIONS', style: TextStyle(color: gold, fontWeight: FontWeight.w800, letterSpacing: 2)),
       const SizedBox(height: 10),
       if (awaitingRecovery) ...[
         const Text('No ships or starports remain on the map. Place up to three fresh ships at a gate.'),
@@ -462,18 +533,34 @@ class _GamePageState extends State<GamePage> {
   }
 
   Widget _eventHistory() => GlassPanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const Text('EVENT HISTORY', style: TextStyle(color: gold, fontWeight: FontWeight.w800, letterSpacing: 2)),
+    const Text('RECENT MOVES', style: TextStyle(color: gold, fontWeight: FontWeight.w800, letterSpacing: 2)),
     const SizedBox(height: 10),
     StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(stream: _events, builder: (context, snapshot) {
-      if (!snapshot.hasData) return const LinearProgressIndicator();
       if (snapshot.hasError) return Text('${snapshot.error}');
-      return Column(children: [for (final doc in snapshot.data!.docs) Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
+      if (!snapshot.hasData) return const LinearProgressIndicator();
+      final docs = snapshot.data!.docs;
+      return FutureBuilder<Map<String, CourtCard>>(future: _courtCards, builder: (context, catalog) {
+        final cardNames = {for (final entry in (catalog.data ?? <String, CourtCard>{}).entries)
+          entry.key: entry.value.name};
+        return Column(children: [for (final doc in docs.take(_showAllEvents ? docs.length : 6)) Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('#${doc.data()['version']}', style: const TextStyle(color: muted, fontSize: 11)),
+          Container(
+            width: 36, padding: const EdgeInsets.symmetric(vertical: 3),
+            decoration: BoxDecoration(color: cyan.withValues(alpha: .1),
+              borderRadius: BorderRadius.circular(6)),
+            child: Text('#${doc.data()['version']}', textAlign: TextAlign.center,
+              style: const TextStyle(color: cyan, fontSize: 10, fontWeight: FontWeight.w800))),
           const SizedBox(width: 10),
-          Expanded(child: Text('${doc.data()['summary']}', style: const TextStyle(fontSize: 12))),
-        ]))]);
+          Expanded(child: Text(_readableEvent('${doc.data()['summary']}', cardNames),
+            style: const TextStyle(fontSize: 12))),
+        ])),
+        if (docs.length > 6) TextButton.icon(
+          onPressed: () => setState(() => _showAllEvents = !_showAllEvents),
+          icon: Icon(_showAllEvents ? Icons.expand_less : Icons.history),
+          label: Text(_showAllEvents ? 'Show recent moves' : 'Show all ${docs.length} moves')),
+        ]);
+      });
     }),
   ]));
 
@@ -1422,6 +1509,97 @@ String _cardLabel(String id) {
   };
   final name = suit.isEmpty ? 'Unknown' : '${suit[0].toUpperCase()}${suit.substring(1)}';
   return '$name $rank · ${rank >= 1 && rank <= 7 ? pips[rank - 1] : 0} pips';
+}
+
+String _readableEvent(String summary, Map<String, String> courtNames) {
+  final actionCards = summary.replaceAllMapped(
+    RegExp(r'\b(administration|aggression|construction|mobilization)-([1-7])\b'),
+    (match) {
+      final suit = match.group(1)!;
+      return '${suit[0].toUpperCase()}${suit.substring(1)} ${match.group(2)}';
+    },
+  );
+  return actionCards.replaceAllMapped(RegExp(r'ARCS-BC(?:0[1-9]|[12][0-9]|3[01])'),
+    (match) => courtNames[match.group(0)] ?? match.group(0)!);
+}
+
+class _ActionCardTile extends StatelessWidget {
+  const _ActionCardTile({required this.id, required this.selected, required this.onTap});
+  final String id;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = id.split('-');
+    final suit = parts.first;
+    final rank = int.tryParse(parts.last) ?? 0;
+    final color = switch (suit) {
+      'administration' => cyan,
+      'aggression' => const Color(0xFFEF8A7B),
+      'construction' => gold,
+      'mobilization' => const Color(0xFFC6A8F4),
+      _ => muted,
+    };
+    final icon = switch (suit) {
+      'administration' => Icons.account_balance,
+      'aggression' => Icons.bolt,
+      'construction' => Icons.construction,
+      'mobilization' => Icons.route,
+      _ => Icons.style,
+    };
+    final actions = switch (suit) {
+      'administration' => 'Tax · Repair · Influence',
+      'aggression' => 'Battle · Move · Secure',
+      'construction' => 'Build · Repair',
+      'mobilization' => 'Move · Influence',
+      _ => '',
+    };
+    final pips = _cardLabel(id).split(' · ').last;
+    return Semantics(
+      button: true, selected: selected, enabled: onTap != null,
+      label: '${_cardLabel(id)}. $actions', onTap: onTap,
+      child: ExcludeSemantics(child: Tooltip(
+        message: actions,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              height: 114,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+                  colors: [color.withValues(alpha: selected ? .26 : .15), panel]),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: selected ? gold : color.withValues(alpha: .5),
+                  width: selected ? 2 : 1),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [Icon(icon, color: color, size: 16), const SizedBox(width: 5),
+                  Expanded(child: Text(suit.toUpperCase(), overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w900,
+                      letterSpacing: .8)))]),
+                const Spacer(),
+                Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  Text('$rank', style: TextStyle(color: color, fontSize: 29,
+                    fontWeight: FontWeight.w900, height: .9)),
+                  const SizedBox(width: 7),
+                  Expanded(child: Text(pips.toUpperCase(), textAlign: TextAlign.right,
+                    style: const TextStyle(color: Colors.white, fontSize: 11,
+                      fontWeight: FontWeight.w800))),
+                ]),
+                const SizedBox(height: 4),
+                Text(actions, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: muted, fontSize: 10)),
+              ]),
+            ),
+          ),
+        ),
+      )),
+    );
+  }
 }
 
 class _PlayerLine extends StatelessWidget {
