@@ -1,8 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:uuid/uuid.dart';
 
 class ArcsService {
   ArcsService({
@@ -38,6 +40,10 @@ class ArcsService {
     );
   }
 
+  Future<void> signInEmail(String email, String password) async {
+    await auth.signInWithEmailAndPassword(email: email.trim(), password: password);
+  }
+
   Future<void> linkGoogle() async {
     final user = await ensureGuest();
     if (kIsWeb) {
@@ -49,6 +55,18 @@ class ArcsService {
         idToken: account.authentication.idToken,
       );
       await user.linkWithCredential(credential);
+    }
+  }
+
+  Future<void> signInGoogle() async {
+    if (kIsWeb) {
+      await auth.signInWithPopup(GoogleAuthProvider());
+    } else {
+      await GoogleSignIn.instance.initialize();
+      final account = await GoogleSignIn.instance.authenticate();
+      await auth.signInWithCredential(GoogleAuthProvider.credential(
+        idToken: account.authentication.idToken,
+      ));
     }
   }
 
@@ -94,6 +112,32 @@ class ArcsService {
       .call({'lobbyId': lobbyId})
       .then((_) {});
 
+  Future<void> enableTurnAlerts() async {
+    const vapidKey = String.fromEnvironment('FCM_VAPID_KEY');
+    if (kIsWeb && vapidKey.isEmpty) {
+      throw StateError('Set FCM_VAPID_KEY before enabling browser push alerts.');
+    }
+    final settings = await FirebaseMessaging.instance.requestPermission();
+    if (settings.authorizationStatus != AuthorizationStatus.authorized &&
+        settings.authorizationStatus != AuthorizationStatus.provisional) {
+      throw StateError('Notification permission was not granted.');
+    }
+    final token = await FirebaseMessaging.instance.getToken(vapidKey: kIsWeb ? vapidKey : null);
+    if (token == null) throw StateError('This browser could not register for push alerts.');
+    await functions.httpsCallable('registerPushToken').call({'token': token});
+    FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+      await functions.httpsCallable('registerPushToken').call({'token': newToken});
+    });
+  }
+
+  Future<int> command(String gameId, Map<String, dynamic> command, {String? commandId}) async {
+    final id = commandId ?? const Uuid().v4();
+    final result = await functions.httpsCallable('submitGameCommand').call<Map<String, dynamic>>({
+      'gameId': gameId, 'commandId': id, 'command': command,
+    });
+    return result.data['version'] as int;
+  }
+
   Stream<QuerySnapshot<Map<String, dynamic>>> publicLobbies() => store
       .collection('lobbies')
       .where('visibility', isEqualTo: 'public')
@@ -107,4 +151,11 @@ class ArcsService {
       .where('memberIds', arrayContains: uid)
       .orderBy('updatedAt', descending: true)
       .snapshots();
+
+  Stream<DocumentSnapshot<Map<String, dynamic>>> game(String id) =>
+      store.collection('games').doc(id).snapshots();
+  Stream<DocumentSnapshot<Map<String, dynamic>>> hand(String gameId, String uid) =>
+      store.collection('games').doc(gameId).collection('hands').doc(uid).snapshots();
+  Stream<QuerySnapshot<Map<String, dynamic>>> events(String gameId) => store
+      .collection('games').doc(gameId).collection('events').orderBy('version', descending: true).limit(80).snapshots();
 }

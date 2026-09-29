@@ -1,9 +1,14 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getMessaging } from 'firebase-admin/messaging';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { setGlobalOptions } from 'firebase-functions/v2';
+import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { z } from 'zod';
+import { applyGameCommand, type GameCommand } from './game_commands';
+import { createGameState, privateHand, publicGame, type GameState } from './game_state';
+import { submitGameCommandSchema } from './game_wire';
 import {
   canStart,
   createLobbySchema,
@@ -18,6 +23,7 @@ import {
 initializeApp();
 setGlobalOptions({ region: 'us-west1', maxInstances: 20, memory: '256MiB' });
 const db = getFirestore();
+db.settings({ ignoreUndefinedProperties: true });
 
 function authenticated(uid: string | undefined): string {
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in before joining a game.');
@@ -112,11 +118,103 @@ export const setReady = onCall(async (request) => {
 export const startGame = onCall(async (request) => {
   const uid = authenticated(request.auth?.uid);
   const { lobbyId } = parse(z.object({ lobbyId: z.string().uuid() }), request.data);
-  const snapshot = await db.doc(`lobbies/${lobbyId}`).get();
-  if (!snapshot.exists) throw new HttpsError('not-found', 'Lobby not found.');
-  if (!canStart(snapshot.data() as Lobby, uid)) {
-    throw new HttpsError('failed-precondition', 'The host can start once every seated player is ready.');
+  try {
+    return await db.runTransaction(async (transaction) => {
+      const lobbyRef = db.doc(`lobbies/${lobbyId}`);
+      const gameRef = db.doc(`games/${lobbyId}`);
+      const stateRef = db.doc(`games/${lobbyId}/private/state`);
+      const snapshot = await transaction.get(lobbyRef);
+      if (!snapshot.exists) throw new HttpsError('not-found', 'Lobby not found.');
+      const lobby = snapshot.data() as Lobby;
+      if (!canStart(lobby, uid)) {
+        throw new HttpsError('failed-precondition', 'The host can start once every seated player is ready.');
+      }
+      if ((await transaction.get(gameRef)).exists) throw new HttpsError('already-exists', 'This match has already started.');
+      const state = createGameState(lobby, Date.now());
+      transaction.create(gameRef, publicGame(state));
+      transaction.create(stateRef, { payload: JSON.stringify(state) });
+      for (const memberUid of state.order) {
+        transaction.create(db.doc(`games/${lobbyId}/hands/${memberUid}`), privateHand(state, memberUid));
+      }
+      transaction.update(lobbyRef, { status: 'playing', gameId: lobbyId, updatedAt: state.updatedAt });
+      transaction.create(db.doc(`games/${lobbyId}/events/000000`), {
+        uid, at: state.updatedAt, version: 0, summary: 'The match began.',
+      });
+      return { gameId: lobbyId };
+    });
+  } catch (error) { return asCallError(error); }
+});
+
+export const submitGameCommand = onCall(async (request) => {
+  const uid = authenticated(request.auth?.uid);
+  const input = parse(submitGameCommandSchema, request.data);
+  try {
+    return await db.runTransaction(async (transaction) => {
+      const gameRef = db.doc(`games/${input.gameId}`);
+      const stateRef = db.doc(`games/${input.gameId}/private/state`);
+      const commandRef = db.doc(`games/${input.gameId}/commands/${input.commandId}`);
+      const appliedCommand = await transaction.get(commandRef);
+      if (appliedCommand.exists) {
+        if (appliedCommand.data()?.uid !== uid) throw new HttpsError('permission-denied', 'Command ID belongs to another player.');
+        return { version: appliedCommand.data()?.version, duplicate: true };
+      }
+      const snapshot = await transaction.get(stateRef);
+      if (!snapshot.exists) throw new HttpsError('not-found', 'Match not found.');
+      const stored = snapshot.data()?.payload;
+      if (typeof stored !== 'string') throw new HttpsError('internal', 'Match state is unavailable.');
+      const state = JSON.parse(stored) as GameState;
+      const result = applyGameCommand(state, uid, input.commandId, input.command as GameCommand, Date.now());
+      if (!result.changed) return { version: state.version, duplicate: true };
+      transaction.set(stateRef, { payload: JSON.stringify(result.state) });
+      transaction.create(commandRef, { uid, version: result.state.version, at: result.state.updatedAt });
+      transaction.set(gameRef, publicGame(result.state));
+      for (const memberUid of result.state.order) {
+        transaction.set(db.doc(`games/${input.gameId}/hands/${memberUid}`), privateHand(result.state, memberUid));
+      }
+      transaction.create(db.doc(`games/${input.gameId}/events/${String(result.state.version).padStart(6, '0')}`), {
+        uid, at: result.state.updatedAt, version: result.state.version, summary: result.summary,
+      });
+      return { version: result.state.version };
+    });
+  } catch (error) { return asCallError(error); }
+});
+
+export const registerPushToken = onCall(async (request) => {
+  const uid = authenticated(request.auth?.uid);
+  const { token } = parse(z.object({ token: z.string().min(20).max(4096) }), request.data);
+  const tokenId = createHash('sha256').update(token).digest('hex');
+  await db.doc(`pushTokens/${uid}/devices/${tokenId}`).set({ token, updatedAt: Date.now() });
+  return { ok: true };
+});
+
+export const notifyTurn = onDocumentWritten('games/{gameId}', async (event) => {
+  const before = event.data?.before.data();
+  const after = event.data?.after.data();
+  if (!after || after.status !== 'playing' || !after.actorUid ||
+    (before?.actorUid === after.actorUid && before?.chapter === after.chapter)) return;
+  const uid = after.actorUid as string;
+  const devices = await db.collection(`pushTokens/${uid}/devices`).get();
+  if (devices.empty) return;
+  const tokens = devices.docs.map((device) => device.data().token as string);
+  for (let index = 0; index < tokens.length; index += 500) {
+    const batch = tokens.slice(index, index + 500);
+    try {
+      const result = await getMessaging().sendEachForMulticast({
+        tokens: batch,
+        notification: { title: 'ARCS · Your turn', body: `It is your turn in ${after.name as string}.` },
+        data: { gameId: event.params.gameId },
+        webpush: { fcmOptions: { link: `https://arcs-online-jeremiah-2026.web.app/game/${event.params.gameId}` } },
+      });
+      await Promise.all(result.responses.map(async (response, offset) => {
+        if (!response.success && ['messaging/registration-token-not-registered',
+          'messaging/invalid-registration-token'].includes(response.error?.code ?? '')) {
+          const tokenId = createHash('sha256').update(batch[offset]).digest('hex');
+          await db.doc(`pushTokens/${uid}/devices/${tokenId}`).delete();
+        }
+      }));
+    } catch (error) {
+      // Notifications are best-effort; a delivery outage cannot affect the match.
+      console.error('Could not send turn notification', error);
+    }
   }
-  // A full base-game rules engine must be in place before creating authoritative games.
-  throw new HttpsError('unimplemented', 'The ARCS rules engine is still being implemented.');
 });

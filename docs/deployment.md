@@ -1,19 +1,30 @@
-# Web deployment
+# Web release and local development
 
-The project is selected in `.firebaserc` as `arcs-online-jeremiah-2026`. Firebase CLI access is working. The [hosted preview](https://arcs-online-jeremiah-2026.web.app), Firestore rules, Authentication providers, and five callable lobby Functions have been deployed. The Firebase project is on Blaze. The app is not yet a playable ARCS match.
+The Flutter web release is live at [arcs-online-jeremiah-2026.web.app](https://arcs-online-jeremiah-2026.web.app/). The Firebase project is `arcs-online-jeremiah-2026` in `us-west1` on Blaze. Anonymous, email/password, and Google Authentication providers are enabled. Firestore rules and indexes, and the lobby and game callables are deployed. The current local web build has newer account and map UI changes; it has **not** been deployed to Hosting. A prior production smoke test passed for guest sign-in, a private lobby, match start, hidden hands, command submission, and termination. The disposable match, lobby, and invite-code documents were deleted afterward.
 
-Anonymous and email/password sign-in are declared in `firebase.json` and were deployed with `firebase deploy --only auth`. Google sign-in remains unconfigured because it requires an approved support email and OAuth brand setup. The web UI supports linking, but that option will fail until the provider is enabled. Android and iPhone builds are deferred at the user's request.
-
-For subsequent deployments, run from the project root with Node.js 22 or newer and a current npm-installed Firebase CLI:
+From the project root, use Node.js 22+, Java 21, Flutter, and a current Firebase CLI:
 
 ```sh
+flutter pub get
 npm --prefix functions ci
 npm --prefix functions run check
-firebase deploy --only auth,functions --project arcs-online-jeremiah-2026
-flutter build web --release
-firebase deploy --only firestore,hosting --project arcs-online-jeremiah-2026
+npx -y firebase-tools@latest emulators:start --only auth,firestore,functions
+flutter run -d chrome --web-port=7357 --dart-define=USE_EMULATORS=true
 ```
 
-The first Functions deploy created all five endpoints but returned a nonzero exit solely because Artifact Registry had no cleanup policy. A 30-day policy was then set with `firebase functions:artifacts:setpolicy --location us-west1 --days 30 --force`; `firebase functions:list` verified the endpoints. A hosted-browser guest created a private two-seat lobby, and `node functions/security/smoke-production.cjs INVITE_CODE` verified a second guest's join, permitted private read, ready status, and departure. The host then left the disposable lobby. A separate public 48-hour async lobby appeared in discovery and disappeared after its host left.
+To serve a release build with Firebase Hosting's local rewrite behavior instead, run `flutter build web --release --dart-define=USE_EMULATORS=true`, then `npx -y firebase-tools@latest emulators:start --only hosting` in another terminal. Hosting defaults to `http://127.0.0.1:5000`.
 
-Match start is intentionally disabled until full rules implementation and verification are complete. In particular, setup, standard actions, battle, Court effects, chapter transitions, and full-game tests remain outstanding.
+The app uses local Authentication, Firestore and Functions when `USE_EMULATORS=true`. No production match data is changed. To verify emulator access, start the emulators and run:
+
+```sh
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node functions/security/check-firestore.cjs
+node functions/security/check-lobbies.cjs
+node functions/security/check-game.cjs
+node functions/security/check-auth.cjs
+node functions/security/check-timers.cjs
+node functions/security/check-full-games.cjs
+```
+
+Google sign-in and guest linking are implemented in the local web client. The Google provider was enabled with display name **ARCS Online** and support email `jeremiah.barrar@gmail.com` through the Firebase CLI. Emulator tests cover linking and return sign-in, but a real Google popup has not been smoke-tested on the hosted build because the newer client has not been deployed. Browser notifications require a Web Push key from Firebase Cloud Messaging settings, supplied with `--dart-define=FCM_VAPID_KEY=...`. The service worker and turn-notification trigger are in source, but the trigger is not deployed yet. Push remains deferred.
+
+For later web releases, run `npm --prefix functions run check` and `flutter build web --release` **without** `USE_EMULATORS=true`. Deploy the gameplay Functions, Auth configuration and Firestore rules/indexes before `npx -y firebase-tools@latest deploy --only hosting --project arcs-online-jeremiah-2026`. A full Functions deploy will also attempt the deferred `notifyTurn` trigger; retry it only when configuring browser push. Android and iPhone are deferred.

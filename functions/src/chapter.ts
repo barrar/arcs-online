@@ -13,6 +13,7 @@ export type CardPlay = {
   mode: PlayMode;
   extraCardId?: string;
   declared?: Ambition;
+  retainRank?: boolean;
 };
 export type ChapterRound = {
   order: string[];
@@ -73,7 +74,7 @@ export function newChapterRound(order: string[], hands: Record<string, ActionCar
 
 export function playCard(
   state: ChapterRound, uid: string, cardId: string, mode: PlayMode,
-  options: { declare?: Ambition; extraCardId?: string } = {},
+  options: { declare?: Ambition; extraCardId?: string; retainRank?: boolean } = {},
 ): ChapterRound {
   requireActor(state, uid);
   if (state.playedThisTurn) throw new Error('You already played an action card this turn.');
@@ -83,7 +84,7 @@ export function playCard(
   if (isLead !== (mode === 'lead')) throw new Error('Only the initiative player leads the round.');
   if (!isLead) {
     const lead = state.lead!;
-    const leadRank = lead.declared ? 0 : lead.card.rank;
+    const leadRank = lead.declared && !lead.retainRank ? 0 : lead.card.rank;
     if (mode === 'surpass' && (card.suit !== lead.card.suit || card.rank <= leadRank)) {
       throw new Error('Surpass requires the lead suit and a higher rank.');
     }
@@ -95,6 +96,7 @@ export function playCard(
       throw new Error('This card cannot declare that ambition.');
     }
   }
+  if (options.retainRank && (!options.declare || !isLead)) throw new Error('Only a declared lead can retain its rank.');
   if (options.extraCardId && (uid === state.initiativeUid || state.seizedUid)) {
     throw new Error('Initiative cannot be seized now.');
   }
@@ -103,7 +105,8 @@ export function playCard(
   const automaticSeize = mode === 'surpass' && card.rank === 7 && !state.seizedUid && uid !== state.initiativeUid;
   const seizedUid = options.extraCardId || automaticSeize ? uid : state.seizedUid;
   const play: CardPlay = { uid, card, mode, ...(options.extraCardId ? { extraCardId: options.extraCardId } : {}),
-    ...(options.declare ? { declared: options.declare } : {}) };
+    ...(options.declare ? { declared: options.declare } : {}),
+    ...(options.retainRank ? { retainRank: true } : {}) };
   const highestSurpass = mode === 'surpass' && (!state.highestSurpass || card.rank > state.highestSurpass.rank)
     ? { uid, rank: card.rank } : state.highestSurpass;
   return {

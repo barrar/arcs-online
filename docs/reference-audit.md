@@ -10,6 +10,6 @@ The 101 MB bundle contains 1,049 embedded images and an approximately 3.4 MB com
 | 3 | Mix Up; Frontiers; Homelands; Core Conflict |
 | 4 | Mix Up 1; Mix Up 2; Frontiers; Mix Up 3 |
 
-The readable source at commit `d157b02` defines only five of those setups: three-player Mix Up, Frontiers, and Core Conflict; four-player Mix Up 1 and Mix Up 2. The presence of an image does **not** mean that a setup or rule is implemented in that engine. Our project encodes the 12 layout names and active clusters, but still needs independently encoded and verified starting-piece labels for all 12 diagrams, especially every two-player layout.
+The readable source at commit `d157b02` defines only five of those setups: three-player Mix Up, Frontiers, and Core Conflict; four-player Mix Up 1 and Mix Up 2. The presence of an image does **not** mean that a setup or rule is implemented in that engine. Our project now encodes and tests the starting-piece labels for all 12 diagrams, including every two-player layout.
 
 The source code has an MIT license, which is recorded in [third-party notices](../THIRD_PARTY_NOTICES.md). The embedded card art and piece images depict the publisher's game artwork and are not included in this repository or web build. They are retained only in the user's original local file and temporary inspection files. The app uses its own UI artwork and a text catalog attributed to the official card library until image redistribution rights are clear.

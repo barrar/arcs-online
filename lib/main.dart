@@ -1,8 +1,7 @@
-import 'dart:math' as math;
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -11,7 +10,7 @@ import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:go_router/go_router.dart';
 
 import 'firebase_options.dart';
-import 'card_catalog.dart';
+import 'game_page.dart';
 import 'services.dart';
 import 'theme.dart';
 
@@ -29,6 +28,17 @@ Future<void> main() async {
       FirebaseFunctions.instanceFor(region: 'us-west1')
           .useFunctionsEmulator(host, 5001);
     }
+    if (kIsWeb && const String.fromEnvironment('FCM_VAPID_KEY').isNotEmpty) {
+      FirebaseMessaging.onMessage.listen((message) {
+        messengerKey.currentState?.showSnackBar(SnackBar(
+          content: Text(message.notification?.body ?? 'Your ARCS table has an update.'),
+        ));
+      });
+      FirebaseMessaging.onMessageOpenedApp.listen((message) {
+        final gameId = message.data['gameId'];
+        if (gameId != null) router.go('/game/$gameId');
+      });
+    }
     runApp(const ArcsApp());
   } catch (error) {
     runApp(
@@ -45,6 +55,7 @@ Future<void> main() async {
 }
 
 final service = ArcsService();
+final messengerKey = GlobalKey<ScaffoldMessengerState>();
 final router = GoRouter(
   routes: [
     GoRoute(path: '/', builder: (_, _) => const HomePage()),
@@ -52,8 +63,9 @@ final router = GoRouter(
       path: '/lobby/:id',
       builder: (_, state) => LobbyPage(lobbyId: state.pathParameters['id']!),
     ),
-    GoRoute(path: '/preview', builder: (_, _) => const BoardPreviewPage()),
-    GoRoute(path: '/cards', builder: (_, _) => const CardCatalogPage()),
+    GoRoute(path: '/game/:id', builder: (_, state) =>
+      GamePage(key: ValueKey(state.pathParameters['id']!),
+        gameId: state.pathParameters['id']!, service: service)),
     GoRoute(
       path: '/join/:code',
       builder: (_, state) => JoinLinkPage(code: state.pathParameters['code']!),
@@ -69,6 +81,7 @@ class ArcsApp extends StatelessWidget {
     debugShowCheckedModeBanner: false,
     theme: arcsTheme(),
     routerConfig: router,
+    scaffoldMessengerKey: messengerKey,
   );
 }
 
@@ -80,6 +93,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   late Future<User> _guest = service.ensureGuest();
+  bool _enablingTurnAlerts = false;
   @override
   Widget build(BuildContext context) => FutureBuilder<User>(
     future: _guest,
@@ -104,25 +118,46 @@ class _HomePageState extends State<HomePage> {
         children: [
           const _Logo(),
           const SizedBox(height: 72),
-          const Text('THE REACH AWAITS', style: TextStyle(color: cyan, letterSpacing: 3,
-              fontWeight: FontWeight.w900)),
+          const Text(
+            'THE REACH AWAITS',
+            style: TextStyle(
+              color: cyan,
+              letterSpacing: 3,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
           const SizedBox(height: 12),
-          Text('Explore the edge\nof the galaxy.', style: Theme.of(context).textTheme.displayLarge
-              ?.copyWith(fontSize: 46, height: 1.05)),
+          Text(
+            'Explore the edge\nof the galaxy.',
+            style: Theme.of(context).textTheme.displayLarge
+                ?.copyWith(fontSize: 46, height: 1.05),
+          ),
           const SizedBox(height: 26),
-          const GlassPanel(child: Row(children: [
-            Icon(Icons.cloud_off, color: gold), SizedBox(width: 14),
-            Expanded(child: Text('Online lobbies are temporarily unavailable. You can still browse the base cards and board preview.')),
-          ])),
+          const GlassPanel(
+            child: Row(
+              children: [
+                Icon(Icons.cloud_off, color: gold),
+                SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    'Online lobbies are temporarily unavailable. Check your connection and retry.',
+                  ),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 22),
-          Wrap(spacing: 12, runSpacing: 12, children: [
-            ElevatedButton.icon(onPressed: () => context.go('/cards'), icon: const Icon(Icons.style),
-                label: const Text('Browse Court cards')),
-            OutlinedButton.icon(onPressed: () => context.go('/preview'), icon: const Icon(Icons.grid_view),
-                label: const Text('Board preview')),
-            TextButton.icon(onPressed: () => setState(() => _guest = service.ensureGuest()),
-                icon: const Icon(Icons.refresh), label: const Text('Retry online play')),
-          ]),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              TextButton.icon(
+                onPressed: () => setState(() => _guest = service.ensureGuest()),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry online play'),
+              ),
+            ],
+          ),
         ],
       ),
     ),
@@ -138,8 +173,31 @@ class _HomePageState extends State<HomePage> {
             children: [
               const _Logo(),
               const Spacer(),
+              if (const String.fromEnvironment('FCM_VAPID_KEY').isNotEmpty)
+                TextButton.icon(
+                  onPressed: _enablingTurnAlerts ? null : () async {
+                    setState(() => _enablingTurnAlerts = true);
+                    try {
+                      await service.enableTurnAlerts();
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Turn alerts enabled on this browser.')));
+                      }
+                    } catch (error) {
+                      if (context.mounted) await _showError(context, error);
+                    } finally {
+                      if (mounted) setState(() => _enablingTurnAlerts = false);
+                    }
+                  },
+                  icon: _enablingTurnAlerts ? const SizedBox(width: 16, height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.notifications_active_outlined),
+                  label: const Text('Enable turn alerts'),
+                ),
               TextButton.icon(
-                onPressed: () => _accountDialog(context),
+                onPressed: () async {
+                  await _accountDialog(context);
+                  if (mounted) setState(() => _guest = service.ensureGuest());
+                },
                 icon: const Icon(Icons.person_outline),
                 label: Text(
                   user.isAnonymous ? 'Guest account' : service.defaultName,
@@ -192,49 +250,19 @@ class _HomePageState extends State<HomePage> {
                     ],
                   ),
                   const SizedBox(height: 14),
-                  const Text(
-                    'The full rules engine is in development. Match start is currently disabled.',
-                    style: TextStyle(color: muted, fontSize: 12),
-                  ),
                 ],
               );
-              return wide
-                  ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(child: heading),
-                        const SizedBox(width: 30),
-                        const Expanded(
-                          child: SizedBox(height: 330, child: BoardTeaser()),
-                        ),
-                      ],
-                    )
-                  : Column(
-                      children: [
-                        heading,
-                        const SizedBox(height: 28),
-                        const SizedBox(height: 250, child: BoardTeaser()),
-                      ],
-                    );
+              return Align(
+                alignment: Alignment.centerLeft,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 760),
+                  child: heading,
+                ),
+              );
             },
           ),
           const SizedBox(height: 38),
-          Row(
-            children: [
-              Text(
-                'OPEN TABLES',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const Spacer(),
-              Wrap(
-                spacing: 8,
-                children: [
-                  TextButton(onPressed: () => context.go('/cards'), child: const Text('Browse cards')),
-                  TextButton(onPressed: () => context.go('/preview'), child: const Text('Board preview →')),
-                ],
-              ),
-            ],
-          ),
+          Text('OPEN TABLES', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 10),
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: service.publicLobbies(),
@@ -332,7 +360,7 @@ class _HomePageState extends State<HomePage> {
                       (doc) => ListTile(
                         title: Text(doc.data()['name'] ?? 'ARCS game'),
                         subtitle: Text(doc.data()['status'] ?? ''),
-                        onTap: () => context.go('/lobby/${doc.id}'),
+                        onTap: () => context.go('/game/${doc.id}'),
                       ),
                     )
                     .toList(),
@@ -402,8 +430,10 @@ Future<void> _createDialog(BuildContext context) async {
   var mode = 'live';
   var minutes = 5;
   var hours = 48;
+  var isCreating = false;
   await showDialog<void>(
     context: context,
+    barrierDismissible: false,
     builder: (dialogContext) => StatefulBuilder(
       builder: (dialogContext, setDialogState) => AlertDialog(
         title: const Text('Create a table'),
@@ -497,30 +527,50 @@ Future<void> _createDialog(BuildContext context) async {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
+            onPressed: isCreating ? null : () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () async {
-              try {
-                final id = await service.createLobby(
-                  name: name.text,
-                  displayName: displayName.text,
-                  visibility: visibility,
-                  maxPlayers: players,
-                  timer: mode == 'live'
-                      ? {'mode': 'live', 'minutes': minutes}
-                      : {'mode': 'async', 'hours': hours},
-                );
-                if (dialogContext.mounted) Navigator.pop(dialogContext);
-                if (context.mounted) context.go('/lobby/$id');
-              } catch (error) {
-                if (dialogContext.mounted) {
-                  await _showError(dialogContext, error);
-                }
-              }
-            },
-            child: const Text('Create'),
+            onPressed: isCreating
+                ? null
+                : () async {
+                    setDialogState(() => isCreating = true);
+                    try {
+                      final id = await service.createLobby(
+                        name: name.text,
+                        displayName: displayName.text,
+                        visibility: visibility,
+                        maxPlayers: players,
+                        timer: mode == 'live'
+                            ? {'mode': 'live', 'minutes': minutes}
+                            : {'mode': 'async', 'hours': hours},
+                      );
+                      if (dialogContext.mounted) Navigator.pop(dialogContext);
+                      if (context.mounted) context.go('/lobby/$id');
+                    } catch (error) {
+                      if (dialogContext.mounted) {
+                        await _showError(dialogContext, error);
+                      }
+                    } finally {
+                      if (dialogContext.mounted) {
+                        setDialogState(() => isCreating = false);
+                      }
+                    }
+                  },
+            child: isCreating
+                ? const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      SizedBox(width: 8),
+                      Text('Creating...'),
+                    ],
+                  )
+                : const Text('Create'),
           ),
         ],
       ),
@@ -619,9 +669,35 @@ class _JoinLinkPageState extends State<JoinLinkPage> {
   );
 }
 
-class LobbyPage extends StatelessWidget {
+class LobbyPage extends StatefulWidget {
   const LobbyPage({required this.lobbyId, super.key});
   final String lobbyId;
+
+  @override
+  State<LobbyPage> createState() => _LobbyPageState();
+}
+
+class _LobbyPageState extends State<LobbyPage> {
+  bool _updatingReady = false;
+  bool _starting = false;
+  late Stream<DocumentSnapshot<Map<String, dynamic>>> _lobbyStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _lobbyStream = service.lobby(widget.lobbyId);
+  }
+
+  @override
+  void didUpdateWidget(covariant LobbyPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.lobbyId != widget.lobbyId) {
+      _lobbyStream = service.lobby(widget.lobbyId);
+      _updatingReady = false;
+      _starting = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     body: SpaceBackdrop(
@@ -630,7 +706,7 @@ class LobbyPage extends StatelessWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 850),
             child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-              stream: service.lobby(lobbyId),
+              stream: _lobbyStream,
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
                   return Center(
@@ -661,6 +737,8 @@ class LobbyPage extends StatelessWidget {
                     .where((seat) => seat['uid'] == uid)
                     .firstOrNull;
                 final host = data['hostId'] == uid;
+                final canStart = host && seats.length >= 2 &&
+                    seats.every((seat) => seat['ready'] == true) && data['status'] == 'waiting';
                 return ListView(
                   padding: const EdgeInsets.all(24),
                   children: [
@@ -717,7 +795,7 @@ class LobbyPage extends StatelessWidget {
                                   await Clipboard.setData(
                                     ClipboardData(
                                       text:
-                                          'https://arcs-online-jeremiah-2026.web.app/join/${data['code']}',
+                                          '${Uri.base.origin}/join/${data['code']}',
                                     ),
                                   );
                                   if (context.mounted) {
@@ -790,41 +868,87 @@ class LobbyPage extends StatelessWidget {
                             children: [
                               if (me != null)
                                 ElevatedButton(
-                                  onPressed: () async {
-                                    try {
-                                      await service.setReady(
-                                        lobbyId,
-                                        me['ready'] != true,
-                                      );
-                                    } catch (error) {
-                                      if (context.mounted) {
-                                        await _showError(context, error);
-                                      }
-                                    }
-                                  },
-                                  child: Text(
-                                    me['ready'] == true
-                                        ? 'Cancel ready'
-                                        : 'Ready up',
-                                  ),
+                                  onPressed: _updatingReady
+                                      ? null
+                                      : () async {
+                                          setState(() => _updatingReady = true);
+                                          try {
+                                            await service.setReady(
+                                              widget.lobbyId,
+                                              me['ready'] != true,
+                                            );
+                                          } catch (error) {
+                                            if (context.mounted) {
+                                              await _showError(context, error);
+                                            }
+                                          } finally {
+                                            if (mounted) {
+                                              setState(
+                                                () => _updatingReady = false,
+                                              );
+                                            }
+                                          }
+                                        },
+                                  child: _updatingReady
+                                      ? const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            ),
+                                            SizedBox(width: 8),
+                                            Text('Updating...'),
+                                          ],
+                                        )
+                                      : Text(
+                                          me['ready'] == true
+                                              ? 'Cancel ready'
+                                              : 'Ready up',
+                                        ),
                                 ),
-                              if (host)
+                              if (host && data['status'] == 'waiting')
                                 OutlinedButton(
-                                  onPressed: null,
-                                  child: const Text('Start match'),
-                                ),
-                              if (me != null)
-                                TextButton(
-                                  onPressed: () async {
+                                  onPressed: !canStart || _starting || _updatingReady ? null : () async {
+                                    setState(() => _starting = true);
                                     try {
-                                      await service.leaveLobby(lobbyId);
-                                      if (context.mounted) context.go('/');
+                                      await service.startGame(widget.lobbyId);
+                                      if (context.mounted) context.go('/game/${widget.lobbyId}');
                                     } catch (error) {
-                                      if (context.mounted) {
-                                        await _showError(context, error);
-                                      }
+                                      if (context.mounted) await _showError(context, error);
+                                    } finally {
+                                      if (mounted) setState(() => _starting = false);
                                     }
                                   },
+                                  child: _starting ? const Row(mainAxisSize: MainAxisSize.min, children: [
+                                    SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                                    SizedBox(width: 8), Text('Starting...'),
+                                  ]) : const Text('Start match'),
+                                ),
+                              if (me != null && data['status'] == 'playing')
+                                OutlinedButton.icon(onPressed: () => context.go('/game/${widget.lobbyId}'),
+                                  icon: const Icon(Icons.play_arrow), label: const Text('Enter match')),
+                              if (me != null && data['status'] == 'waiting')
+                                TextButton(
+                                  onPressed: _updatingReady
+                                      ? null
+                                      : () async {
+                                          try {
+                                            await service.leaveLobby(
+                                              widget.lobbyId,
+                                            );
+                                            if (context.mounted) {
+                                              context.go('/');
+                                            }
+                                          } catch (error) {
+                                            if (context.mounted) {
+                                              await _showError(context, error);
+                                            }
+                                          }
+                                        },
                                   child: const Text('Leave'),
                                 ),
                             ],
@@ -854,17 +978,35 @@ Color _seatColor(String color) => switch (color) {
 Future<void> _accountDialog(BuildContext context) async {
   final email = TextEditingController();
   final password = TextEditingController();
+  final user = service.auth.currentUser;
+  final linkedProviders = user?.providerData.map((provider) => provider.providerId).toSet() ?? <String>{};
+  var busy = false;
   await showDialog<void>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
+    builder: (dialogContext) => StatefulBuilder(builder: (dialogContext, update) {
+      Future<void> run(Future<void> Function() action) async {
+        if (busy) return;
+        update(() => busy = true);
+        try {
+          await action();
+          if (dialogContext.mounted) Navigator.pop(dialogContext);
+        } catch (error) {
+          if (dialogContext.mounted) await _showError(dialogContext, error);
+        } finally {
+          if (dialogContext.mounted) update(() => busy = false);
+        }
+      }
+      return AlertDialog(
       title: const Text('Keep your games'),
       content: SizedBox(
         width: 370,
-        child: Column(
+        child: SingleChildScrollView(child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Link this guest to an account so you can return on another device.',
+            Text(
+              user?.isAnonymous == true
+                ? 'Link this guest to keep its games. To return to an existing account, sign in below; that replaces this guest session.'
+                : 'Your games are saved to this account. You can link another sign-in method or sign out.',
               style: TextStyle(color: muted),
             ),
             const SizedBox(height: 17),
@@ -883,16 +1025,8 @@ Future<void> _accountDialog(BuildContext context) async {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () async {
-                  try {
-                    await service.linkEmail(email.text, password.text);
-                    if (dialogContext.mounted) Navigator.pop(dialogContext);
-                  } catch (error) {
-                    if (dialogContext.mounted) {
-                      await _showError(dialogContext, error);
-                    }
-                  }
-                },
+                onPressed: busy || linkedProviders.contains('password')
+                  ? null : () => run(() => service.linkEmail(email.text, password.text)),
                 child: const Text('Link email account'),
               ),
             ),
@@ -900,192 +1034,43 @@ Future<void> _accountDialog(BuildContext context) async {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton(
-                onPressed: () async {
-                  try {
-                    await service.linkGoogle();
-                    if (dialogContext.mounted) Navigator.pop(dialogContext);
-                  } catch (error) {
-                    if (dialogContext.mounted) {
-                      await _showError(dialogContext, error);
-                    }
-                  }
-                },
-                child: const Text('Continue with Google'),
+                onPressed: busy || linkedProviders.contains('google.com')
+                  ? null : () => run(service.linkGoogle),
+                child: const Text('Link Google account'),
               ),
             ),
+            const SizedBox(height: 18),
+            const Divider(),
+            const SizedBox(height: 8),
+            const Text('Already have an account?', style: TextStyle(color: muted)),
+            const SizedBox(height: 8),
+            SizedBox(width: double.infinity, child: OutlinedButton(
+              onPressed: busy ? null : () => run(service.signInGoogle),
+              child: const Text('Sign in with Google'),
+            )),
+            const SizedBox(height: 8),
+            SizedBox(width: double.infinity, child: OutlinedButton(
+              onPressed: busy ? null : () => run(() => service.signInEmail(email.text, password.text)),
+              child: const Text('Sign in with email'),
+            )),
+            if (user?.isAnonymous == false) ...[
+              const SizedBox(height: 12),
+              TextButton(onPressed: busy ? null : () => run(service.auth.signOut),
+                child: const Text('Sign out')),
+            ],
+            if (busy) const Padding(padding: EdgeInsets.only(top: 12),
+              child: CircularProgressIndicator(strokeWidth: 2)),
           ],
-        ),
+        )),
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(dialogContext),
+          onPressed: busy ? null : () => Navigator.pop(dialogContext),
           child: const Text('Close'),
         ),
       ],
-    ),
+    ); }),
   );
   email.dispose();
   password.dispose();
-}
-
-class BoardPreviewPage extends StatelessWidget {
-  const BoardPreviewPage({super.key});
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    body: SpaceBackdrop(
-      child: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              child: Row(
-                children: [
-                  TextButton.icon(
-                    onPressed: () => context.go('/'),
-                    icon: const Icon(Icons.arrow_back),
-                    label: const Text('Back'),
-                  ),
-                  const Spacer(),
-                  const Text(
-                    'BOARD PREVIEW',
-                    style: TextStyle(color: muted, letterSpacing: 2),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: InteractiveViewer(
-                minScale: .6,
-                maxScale: 4,
-                child: SizedBox.expand(
-                  child: CustomPaint(painter: ReachPreviewPainter()),
-                ),
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'Visual direction preview • Map and setup data still require rulebook verification.',
-                style: TextStyle(color: muted, fontSize: 12),
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-class BoardTeaser extends StatelessWidget {
-  const BoardTeaser({super.key});
-  @override
-  Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(22),
-    child: GestureDetector(
-      onTap: () => context.go('/preview'),
-      child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF0C1829),
-          border: Border.all(color: const Color(0xFF344862)),
-          borderRadius: BorderRadius.circular(22),
-        ),
-        child: const CustomPaint(painter: ReachPreviewPainter()),
-      ),
-    ),
-  );
-}
-
-class ReachPreviewPainter extends CustomPainter {
-  const ReachPreviewPainter();
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final span = math.min(size.width, size.height);
-    final outer = span * .41;
-    final inner = span * .19;
-    final ring = Paint()
-      ..color = cyan.withValues(alpha: .34)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-    final glow = Paint()
-      ..color = cyan.withValues(alpha: .08)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 22);
-    canvas.drawCircle(center, inner, glow);
-    canvas.drawCircle(center, inner, ring);
-    canvas.drawCircle(center, outer, ring..color = gold.withValues(alpha: .17));
-    for (var cluster = 0; cluster < 6; cluster++) {
-      final angle = cluster * math.pi / 3 - math.pi / 2;
-      final gate = Offset(
-        center.dx + math.cos(angle) * inner,
-        center.dy + math.sin(angle) * inner,
-      );
-      final nextGate = Offset(
-        center.dx + math.cos(angle + math.pi / 3) * inner,
-        center.dy + math.sin(angle + math.pi / 3) * inner,
-      );
-      canvas.drawLine(
-        gate,
-        nextGate,
-        Paint()
-          ..color = cyan.withValues(alpha: .24)
-          ..strokeWidth = 1,
-      );
-      canvas.drawCircle(gate, span * .018, Paint()..color = cyan);
-      for (var p = 0; p < 3; p++) {
-        final a = angle + (p - 1) * .22;
-        final dist = outer * (p == 1 ? .94 : .77);
-        final planet = Offset(
-          center.dx + math.cos(a) * dist,
-          center.dy + math.sin(a) * dist,
-        );
-        canvas.drawLine(
-          gate,
-          planet,
-          Paint()
-            ..color = cyan.withValues(alpha: .13)
-            ..strokeWidth = 1,
-        );
-        canvas.drawCircle(
-          planet,
-          span * .038,
-          Paint()
-            ..color = [
-              gold,
-              const Color(0xFFE28069),
-              const Color(0xFF6ED0C5),
-              const Color(0xFFC29FEA),
-              const Color(0xFF89B7EF),
-            ][(cluster + p) % 5].withValues(alpha: .25),
-        );
-        canvas.drawCircle(
-          planet,
-          span * .028,
-          Paint()
-            ..color = [
-              gold,
-              const Color(0xFFE28069),
-              const Color(0xFF6ED0C5),
-              const Color(0xFFC29FEA),
-              const Color(0xFF89B7EF),
-            ][(cluster + p) % 5],
-        );
-      }
-    }
-    final title = TextPainter(
-      text: const TextSpan(
-        text: 'THE REACH',
-        style: TextStyle(
-          color: gold,
-          fontSize: 18,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 2,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    title.paint(canvas, center - Offset(title.width / 2, title.height / 2));
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

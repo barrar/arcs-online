@@ -2,7 +2,8 @@ const assert = require('node:assert/strict');
 const { initializeApp, deleteApp } = require('firebase/app');
 const { getAuth, connectAuthEmulator, signInAnonymously, EmailAuthProvider, linkWithCredential } = require('firebase/auth');
 const { getFunctions, connectFunctionsEmulator, httpsCallable } = require('firebase/functions');
-const { getFirestore, connectFirestoreEmulator, doc, getDoc } = require('firebase/firestore');
+const { getFirestore, connectFirestoreEmulator, doc, getDoc,
+  collection, query, where, getDocs } = require('firebase/firestore');
 
 const projectId = 'arcs-online-jeremiah-2026';
 async function client(name) {
@@ -51,7 +52,20 @@ async function check() {
     const after = (await getDoc(doc(winner.db, 'lobbies', created.lobbyId))).data();
     assert.equal(after.hostId, winner.auth.currentUser.uid);
     assert.equal(after.seats.length, 1);
-    console.log('Local Auth, Functions, and Firestore lobby checks passed.');
+    await a.call('joinLobby', { code: created.code, displayName: 'A returns' });
+    assert.equal((await getDoc(ref)).data().seats.length, 2);
+
+    const publicLobby = await c.call('createLobby', {
+      name: 'Public discovery check', displayName: 'C', visibility: 'public', maxPlayers: 3,
+      timer: { mode: 'async', hours: 48 },
+    });
+    const openTables = await getDocs(query(collection(a.db, 'lobbies'),
+      where('visibility', '==', 'public'), where('status', '==', 'waiting')));
+    assert.ok(openTables.docs.some((item) => item.id === publicLobby.lobbyId));
+    assert.ok(openTables.docs.every((item) => item.id !== created.lobbyId));
+    await a.call('joinLobby', { code: publicLobby.code, displayName: 'A joins public' });
+    assert.equal((await getDoc(doc(a.db, 'lobbies', publicLobby.lobbyId))).data().seats.length, 2);
+    console.log('Private invites, public discovery, concurrent join, ready-up, host leave, and rejoin checks passed.');
   } finally {
     await Promise.all([a.app, b.app, c.app].map(deleteApp));
   }
