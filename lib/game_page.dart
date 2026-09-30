@@ -11,6 +11,7 @@ import 'package:uuid/uuid.dart';
 import 'card_catalog.dart';
 import 'reach_board_layout.dart';
 import 'reach_names.dart';
+import 'resource_icon.dart';
 import 'services.dart';
 import 'theme.dart';
 
@@ -29,6 +30,7 @@ class _GamePageState extends State<GamePage> {
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _events = widget.service.events(widget.gameId);
   final Map<String, Stream<DocumentSnapshot<Map<String, dynamic>>>> _hands = {};
   final GlobalKey _decisionKey = GlobalKey();
+  final GlobalKey _actionsKey = GlobalKey();
   late final Future<List<CourtCard>> _catalog = loadBaseCourt();
   late final Future<Map<String, CourtCard>> _courtCards = _catalog.then(
     (cards) => {for (final card in cards) card.id: card});
@@ -40,6 +42,8 @@ class _GamePageState extends State<GamePage> {
   String? _extraCard;
   bool _busy = false;
   bool _showAllEvents = false;
+  bool _showActionInfo = true;
+  int _boardPointers = 0;
   String? _failedCommandJson;
   String? _failedCommandId;
   Timer? _refreshClock;
@@ -117,7 +121,6 @@ class _GamePageState extends State<GamePage> {
     final isTurn = actorUid == uid && game['status'] == 'playing';
     final selected = _selectedSystem;
     final status = game['status'] as String;
-    final decision = _decisionPrompt(game, players, uid, isTurn);
     return Column(
       children: [
         Padding(
@@ -141,25 +144,6 @@ class _GamePageState extends State<GamePage> {
             ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 0, 20, 10),
-          child: Semantics(liveRegion: true, child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: (isTurn ? gold : cyan).withValues(alpha: .12),
-              border: Border.all(color: (isTurn ? gold : cyan).withValues(alpha: .45)),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(children: [
-              Icon(isTurn ? Icons.bolt : Icons.hourglass_top, color: isTurn ? gold : cyan, size: 20),
-              const SizedBox(width: 10),
-              Expanded(child: Text(decision, maxLines: 2, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700))),
-              TextButton(onPressed: _scrollToDecision,
-                child: Text(isTurn ? 'Go to action' : 'View hand')),
-            ]),
-          )),
-        ),
         Expanded(
           child: LayoutBuilder(builder: (context, constraints) {
             final wide = constraints.maxWidth >= 980;
@@ -168,7 +152,24 @@ class _GamePageState extends State<GamePage> {
             final rail = _rail(game, hand, players, uid, isTurn, wide);
             return wide
                 ? Row(children: [Expanded(flex: 3, child: board), SizedBox(width: 400, child: rail)])
-                : ListView(children: [SizedBox(height: math.min(constraints.maxWidth, 640), child: board),
+                : ListView(
+                      physics: _boardPointers > 0
+                          ? const NeverScrollableScrollPhysics()
+                          : null,children: [SizedBox(height: math.min(
+                            math.max(constraints.maxWidth * 1.25,
+                              constraints.maxHeight * .78,
+                            ),
+                            760.0,
+                          ),
+                          child: Listener(
+                            behavior: HitTestBehavior.opaque,
+                            onPointerDown: (_) {
+                              _boardPointers++;
+                              if (_boardPointers == 1) setState(() {});
+                            },
+                            onPointerUp: (_) => _releaseBoardPointer(),
+                            onPointerCancel: (_) => _releaseBoardPointer(), child: board,
+                          )),
                     rail]);
           }),
         ),
@@ -176,13 +177,19 @@ class _GamePageState extends State<GamePage> {
     );
   }
 
-  void _scrollToDecision() {
-    final target = _decisionKey.currentContext;
+  void _scrollToDecision(bool isTurn) {
+    final target = (isTurn ? _actionsKey : _decisionKey).currentContext;
     if (target != null) {
       Scrollable.ensureVisible(target,
         duration: const Duration(milliseconds: 300), alignment: .08,
         curve: Curves.easeOutCubic);
     }
+  }
+
+  void _releaseBoardPointer() {
+    if (_boardPointers == 0) return;
+    _boardPointers--;
+    if (_boardPointers == 0 && mounted) setState(() {});
   }
 
   String _decisionPrompt(Map<String, dynamic> game, Map<String, dynamic> players,
@@ -220,9 +227,19 @@ class _GamePageState extends State<GamePage> {
       (game['pendingVox'] as List).isNotEmpty ||
       (game['pendingResourceChoices'] as List).isNotEmpty || round['playedThisTurn'] == true;
     final handPanel = _hand(game, round, cards, uid, isTurn);
-    final commandPanel = _turnControls(game, hand, round, me, uid, isTurn);
-    final decisionPanel = isTurn && needsChoice ? commandPanel : handPanel;
-    final secondaryPanel = isTurn && needsChoice ? handPanel : commandPanel;
+    final commandPanel = KeyedSubtree(key: _actionsKey,
+      child: _turnControls(game, hand, round, me, uid, isTurn));
+    final commandWithInfo = Column(
+      children: [
+        if (_showActionInfo) ...[
+          _actionInfoPanel(_decisionPrompt(game, players, uid, isTurn), isTurn),
+          const SizedBox(height: 12),
+        ],
+        commandPanel,
+      ],
+    );
+    final decisionPanel = isTurn && needsChoice ? commandWithInfo : handPanel;
+    final secondaryPanel = isTurn && needsChoice ? handPanel : commandWithInfo;
     final children = <Widget>[
         GlassPanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(game['status'] == 'finished' ? 'MATCH COMPLETE' : game['status'] == 'terminated'
@@ -243,7 +260,6 @@ class _GamePageState extends State<GamePage> {
         KeyedSubtree(key: _decisionKey, child: decisionPanel),
         const SizedBox(height: 12),
         secondaryPanel,
-        if (_selectedSystem != null) ...[const SizedBox(height: 12), _systemDetails(game, _selectedSystem!)],
         const SizedBox(height: 12),
         _roundPanel(game),
         if (game['lastScoring'] != null) ...[const SizedBox(height: 12), _lastScoring(game)],
@@ -261,6 +277,48 @@ class _GamePageState extends State<GamePage> {
       children: children,
     );
   }
+
+  Widget _actionInfoPanel(String decision, bool isTurn) => Semantics(
+    liveRegion: true,
+    child: Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 8, 4, 8),
+      decoration: BoxDecoration(
+        color: (isTurn ? gold : cyan).withValues(alpha: .12),
+        border: Border.all(
+          color: (isTurn ? gold : cyan).withValues(alpha: .45),
+        ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isTurn ? Icons.bolt : Icons.hourglass_top,
+            color: isTurn ? gold : cyan,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              decision,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+          ),
+          TextButton(
+            onPressed: () => _scrollToDecision(isTurn),
+            child: Text(isTurn ? 'Go to action' : 'View hand'),
+          ),
+          IconButton(
+            tooltip: 'Hide action info',
+            onPressed: () => setState(() => _showActionInfo = false),
+            icon: const Icon(Icons.close, size: 18),
+          ),
+        ],
+      ),
+    ),
+  );
 
   Future<void> _confirmConcede() async {
     final confirm = await showDialog<bool>(context: context, builder: (dialog) => AlertDialog(
@@ -323,7 +381,14 @@ class _GamePageState extends State<GamePage> {
       const Text('YOUR PLAYER BOARD', style: TextStyle(color: gold, fontWeight: FontWeight.w800, letterSpacing: 2)),
       const SizedBox(height: 9),
       Wrap(spacing: 7, runSpacing: 7, children: [for (var i = 0; i < capacity; i++)
-        Chip(label: Text('${resources[i] ?? 'EMPTY'} · ${costs[i]} keys'))]),
+        Chip(
+                  avatar: resources[i] == null
+                      ? null
+                      : ResourceIcon(
+                          resource: '${resources[i]}',
+                          size: 22,
+                          excludeFromSemantics: true,
+                        ),label: Text('${resources[i] ?? 'EMPTY'} · ${costs[i]} keys'))]),
       const SizedBox(height: 7),
       Text('${player['citiesOut']} cities · ${(player['trophies'] as List).length} trophies · ${(player['captiveOwners'] as List).length} captives',
         style: const TextStyle(color: muted, fontSize: 12)),
@@ -343,29 +408,6 @@ class _GamePageState extends State<GamePage> {
             )]);
         }),
       ],
-    ]));
-  }
-
-  Widget _systemDetails(Map<String, dynamic> game, String systemId) {
-    final systems = (game['systems'] as Map).cast<String, dynamic>();
-    if (!systems.containsKey(systemId)) return const SizedBox.shrink();
-    final players = (game['players'] as Map).cast<String, dynamic>();
-    final pieces = (systems[systemId] as List).cast<Map>();
-    return GlassPanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(_systemName(game, systemId).toUpperCase(),
-        style: const TextStyle(color: gold, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
-      Text(systemId.endsWith(':gate') ? 'GATE' : '${_planetResource(systemId).toUpperCase()} PLANET',
-        style: const TextStyle(color: cyan, fontSize: 11, letterSpacing: 1)),
-      const SizedBox(height: 9),
-      if (pieces.isEmpty) const Text('No pieces here.', style: TextStyle(color: muted)),
-      for (final piece in pieces) Padding(padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(children: [
-          Icon(_pieceIcon('${piece['kind']}'), size: 16,
-            color: _playerColor('${(players['${piece['owner']}'] as Map)['color']}')),
-          const SizedBox(width: 7),
-          Text('${(players['${piece['owner']}'] as Map)['name']} · ${piece['kind']} ${piece['damaged'] == true ? '· DAMAGED' : ''}',
-            style: TextStyle(color: _playerColor('${(players['${piece['owner']}'] as Map)['color']}'), fontSize: 12)),
-        ])),
     ]));
   }
 
@@ -661,12 +703,25 @@ class _GamePageState extends State<GamePage> {
     return labels;
   }
 
-  Future<String?> _pick(String title, Map<String, String> options) => showDialog<String>(
+  Future<String?> _pick(String title, Map<String, String> options, {
+    Map<String, String> resourceIcons = const {},
+  }) => showDialog<String>(
     context: context,
     builder: (dialog) => SimpleDialog(title: Text(title), children: [
       for (final entry in options.entries) SimpleDialogOption(
         onPressed: () => Navigator.pop(dialog, entry.key),
-        child: Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Text(entry.value))),
+        child: Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Row(
+                children: [
+                  if (resourceIcons[entry.key] != null) ...[
+                    ResourceIcon(
+                      resource: resourceIcons[entry.key]!,
+                      size: 24,
+                      excludeFromSemantics: true,
+                    ),
+                    const SizedBox(width: 9),
+                  ],
+                  Expanded(child: Text(entry.value)),
+                ]))),
     ]),
   );
 
@@ -705,8 +760,13 @@ class _GamePageState extends State<GamePage> {
         final cities = pieces.where((piece) => piece['kind'] == 'city' &&
           (piece['owner'] == uid || _controller(game, '${piece['systemId']}') == uid) &&
           !taxed.contains(piece['id']));
-        final id = await _pick('Tax a city', {for (final city in cities) '${city['id']}':
-          '${_systemName(game, '${city['systemId']}')} · ${(players['${city['owner']}'] as Map)['name']} city'});
+        final id = await _pick(
+          'Tax a city',
+          {for (final city in cities) '${city['id']}':
+            '${_systemName(game, '${city['systemId']}')} · ${_planetResource('${city['systemId']}')}'},
+          resourceIcons: {for (final city in cities) '${city['id']}':
+            _planetResource('${city['systemId']}')},
+        );
         if (id == null) return null;
         final slot = await _chooseGainSlot(game, uid, 'Place taxed resource');
         return slot == -2 ? null : {'kind': 'tax', 'cityId': id, 'slot': ?slot};
@@ -831,6 +891,10 @@ class _GamePageState extends State<GamePage> {
       'auto': 'First open slot (or discard if full)',
       for (var index = 0; index < capacity; index++) '$index':
         'Slot ${index + 1} · ${resources[index] ?? 'empty'} · ${[3, 1, 1, 2, 1, 3][index]} raid keys',
+      },
+      resourceIcons: {
+        for (var index = 0; index < capacity; index++)
+          if (resources[index] != null) '$index': '${resources[index]}',
     });
     if (chosen == null) return -2;
     return chosen == 'auto' ? null : int.parse(chosen);
@@ -1091,7 +1155,11 @@ class _GamePageState extends State<GamePage> {
         choices['guild:$card'] = 'Use ${cards[card]?.name ?? card}\n${cards[card]?.plainText ?? ''}';
       }
     }
-    final chosen = await _pick('Prelude', choices);
+    final chosen = await _pick('Prelude', choices,
+      resourceIcons: {
+        for (var slot = 0; slot < resources.length; slot++)
+          if (resources[slot] != null) 'resource:$slot': '${resources[slot]}',
+      });
     if (chosen == null) return;
     if (chosen.startsWith('resource:')) {
       final slot = int.parse(chosen.split(':').last);
@@ -1103,7 +1171,8 @@ class _GamePageState extends State<GamePage> {
         if (guilds.contains(entry.value) && !conversions.contains(entry.key)) conversions.add(entry.key);
       }
       final asResource = conversions.length == 1 ? actual : await _pick('Spend $actual as', {
-        for (final value in conversions) value: value.toUpperCase()});
+        for (final value in conversions) value: value.toUpperCase()},
+              resourceIcons: {for (final value in conversions) value: value});
       if (asResource == null) return;
       if (asResource == 'weapon') {
         await _send({'kind': 'resource', 'slot': slot, 'as': asResource});
@@ -1503,6 +1572,11 @@ class _GamePageState extends State<GamePage> {
         content: SizedBox(width: 350, child: ListView(shrinkWrap: true, children: [
           for (var index = 0; index < resources.length; index++) CheckboxListTile(
             title: Text('${resources[index]} · token ${index + 1}'), value: selected.contains(index),
+                    secondary: ResourceIcon(
+                      resource: resources[index],
+                      size: 26,
+                      excludeFromSemantics: true,
+                    ),
             onChanged: (value) => update(() { if (value == true) {
               selected.add(index);
             } else {
@@ -1529,6 +1603,9 @@ class _GamePageState extends State<GamePage> {
       final chosen = await _pick('Resource slot ${index + 1} · ${[3, 1, 1, 2, 1, 3][index]} raid keys', {
         if (remaining.length < spacesLeft) 'empty': 'Leave empty',
         for (final entry in remaining.entries) '${entry.key}': '${entry.value} (from slot ${entry.key + 1})',
+        },
+        resourceIcons: {
+          for (final entry in remaining.entries) '${entry.key}': entry.value,
       });
       if (chosen == null) return;
       if (chosen == 'empty') {
@@ -1694,6 +1771,105 @@ String _planetResource(String id) {
   return data[id] ?? 'Gate';
 }
 
+Widget _systemDetails(
+  Map<String, dynamic> game,
+  String systemId,
+  VoidCallback onClose,
+) {
+  final systems = (game['systems'] as Map).cast<String, dynamic>();
+  if (!systems.containsKey(systemId)) return const SizedBox.shrink();
+  final players = (game['players'] as Map).cast<String, dynamic>();
+  final pieces = (systems[systemId] as List).cast<Map>();
+  final name = _systemName(game, systemId);
+  return Semantics(
+    container: true,
+    label: '$name details',
+    child: GlassPanel(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  name.toUpperCase(),
+                  style: const TextStyle(
+                    color: gold,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Close system details',
+                onPressed: onClose,
+                icon: const Icon(Icons.close, size: 18),
+              ),
+            ],
+          ),
+          if (systemId.endsWith(':gate'))
+            const Text(
+              'GATE',
+              style: TextStyle(color: cyan, fontSize: 11, letterSpacing: 1),
+            )
+          else
+            Row(
+              children: [
+                ResourceIcon(
+                  resource: _planetResource(systemId),
+                  size: 22,
+                  excludeFromSemantics: true,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '${_planetResource(systemId).toUpperCase()} PLANET',
+                  style: const TextStyle(
+                    color: cyan,
+                    fontSize: 11,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ],
+            ),
+          const SizedBox(height: 9),
+          if (pieces.isEmpty)
+            const Text('No pieces here.', style: TextStyle(color: muted)),
+          for (final piece in pieces)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  Icon(
+                    _pieceIcon('${piece['kind']}'),
+                    size: 16,
+                    color: _playerColor(
+                      '${(players['${piece['owner']}'] as Map)['color']}',
+                    ),
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      '${(players['${piece['owner']}'] as Map)['name']} · ${piece['kind']} '
+                      '${piece['damaged'] == true ? '· DAMAGED' : ''}',
+                      style: TextStyle(
+                        color: _playerColor(
+                          '${(players['${piece['owner']}'] as Map)['color']}',
+                        ),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
+}
+
 class _Deadline extends StatefulWidget {
   const _Deadline({required this.deadlineMs, required this.active});
   final int deadlineMs;
@@ -1722,56 +1898,126 @@ class _DeadlineState extends State<_Deadline> {
   }
 }
 
-class _ReachBoard extends StatelessWidget {
+class _ReachBoard extends StatefulWidget {
   const _ReachBoard({required this.game, required this.selectedSystem, required this.onSelect});
   final Map<String, dynamic> game;
   final String? selectedSystem;
-  final ValueChanged<String> onSelect;
+  final ValueChanged<String?> onSelect;
+
+  @override
+  State<_ReachBoard> createState() => _ReachBoardState();
+}
+
+class _ReachBoardState extends State<_ReachBoard> {
+  final GlobalKey _boardKey = GlobalKey();
+  Offset? _tapPosition;
+
+  void _rememberTap(TapDownDetails details) {
+    final box = _boardKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box != null) _tapPosition = box.globalToLocal(details.globalPosition);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final active = (game['activeClusters'] as List).cast<int>();
-    final systems = (game['systems'] as Map).cast<String, dynamic>();
-    final players = (game['players'] as Map).cast<String, dynamic>();
+    final active = (widget.game['activeClusters'] as List).cast<int>();
+    final systems = (widget.game['systems'] as Map).cast<String, dynamic>();
+    final players = (widget.game['players'] as Map).cast<String, dynamic>();
     final layout = ReachBoardLayout(activeClusters: active, playerCount: players.length);
     const boardSize = 850.0;
     return GlassPanel(
       padding: EdgeInsets.zero,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
-        child: Stack(fit: StackFit.expand, children: [
-          _ZoomableBoard(
-            child: SizedBox(
-              width: boardSize,
-              height: boardSize,
-              child: LayoutBuilder(builder: (context, constraints) {
-                final size = constraints.biggest;
-                return Stack(children: [
-                  Positioned.fill(child: CustomPaint(painter: _ReachPainter(layout))),
-                  for (var cluster = 1; cluster <= 6; cluster++)
-                    if (active.contains(cluster))
-                      for (final glyph in ['gate', 'arrow', 'crescent', 'hex'])
-                        _boardNode('$cluster:$glyph', size, systems, players, layout),
-                ]);
-              }),
-            ),
-          ),
-          Positioned(top: 12, left: 12, child: IgnorePointer(child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-            decoration: BoxDecoration(color: panel.withValues(alpha: .94),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: cyan.withValues(alpha: .24))),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              for (final kind in ['ship', 'city', 'starport']) ...[
-                if (kind != 'ship') const SizedBox(width: 12),
-                Icon(_pieceIcon(kind), size: 14, color: cyan),
-                const SizedBox(width: 4),
-                Text(kind == 'starport' ? 'Starport' : kind == 'city' ? 'City' : 'Ship',
-                  style: const TextStyle(color: muted, fontSize: 10)),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final viewport = constraints.biggest;
+            final tooltipWidth = math.min(
+              320.0,
+              math.max(0.0, viewport.width - 24),
+            );
+            final selectedPieces = widget.selectedSystem == null
+                ? 0
+                : ((systems[widget.selectedSystem] as List?)?.length ?? 0);
+            final tooltipHeight = math.min(
+              math.min(280.0, 132.0 + selectedPieces * 24.0),
+              math.max(0.0, viewport.height - 24),
+            );
+            final anchor =
+                _tapPosition ?? Offset(viewport.width / 2, viewport.height / 2);
+            final left =
+                (anchor.dx + tooltipWidth + 16 <= viewport.width - 12
+                        ? anchor.dx + 16
+                        : anchor.dx - tooltipWidth - 16)
+                    .clamp(
+                      12.0,
+                      math.max(12.0, viewport.width - tooltipWidth - 12),
+                    )
+                    .toDouble();
+            final below = anchor.dy + 16;
+            final top =
+                (below + tooltipHeight <= viewport.height - 12
+                        ? below
+                        : anchor.dy - tooltipHeight - 16)
+                    .clamp(
+                      12.0,
+                      math.max(12.0, viewport.height - tooltipHeight - 12),
+                    )
+                    .toDouble();
+            return Stack(
+              key: _boardKey,
+              fit: StackFit.expand,
+              children: [
+                _ZoomableBoard(
+                  child: SizedBox(
+                    width: boardSize,
+                    height: boardSize,
+                    child: LayoutBuilder(builder: (context, constraints) {
+                      final size = constraints.biggest;
+                      return Stack(children: [
+                        Positioned.fill(child: CustomPaint(painter: _ReachPainter(layout))),
+                        for (var cluster = 1; cluster <= 6; cluster++)
+                          if (active.contains(cluster))
+                            for (final glyph in ['gate', 'arrow', 'crescent', 'hex'])
+                              _boardNode('$cluster:$glyph', size, systems, players, layout),
+                      ]);
+                    }),
+                  ),
+                ),
+                Positioned(top: 12, left: 12, child: IgnorePointer(child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(color: panel.withValues(alpha: .94),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: cyan.withValues(alpha: .24))),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    for (final kind in ['ship', 'city', 'starport']) ...[
+                      if (kind != 'ship') const SizedBox(width: 12),
+                      Icon(_pieceIcon(kind), size: 14, color: cyan),
+                      const SizedBox(width: 4),
+                      Text(kind == 'starport' ? 'Starport' : kind == 'city' ? 'City' : 'Ship',
+                        style: const TextStyle(color: muted, fontSize: 10)),
+                    ],
+                  ]),
+                ))),
+                if (widget.selectedSystem != null)
+                  Positioned(
+                    left: left,
+                    top: top,
+                    width: tooltipWidth,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxHeight: tooltipHeight),
+                      child: SingleChildScrollView(
+                        child: _systemDetails(
+                          widget.game,
+                          widget.selectedSystem!,
+                          () => widget.onSelect(null),
+                        ),
+                      ),
+                    ),
+                  ),
               ],
-            ]),
-          ))),
-        ]),
+            );
+          },
+        ),
       ),
     );
   }
@@ -1786,11 +2032,12 @@ class _ReachBoard extends StatelessWidget {
       height: 88,
       child: _SystemNode(
         id: id,
-        name: _systemName(game, id),
+        name: _systemName(widget.game, id),
         pieces: (systems[id] as List).cast<Map>(),
-        selected: id == selectedSystem,
+        selected: id == widget. selectedSystem,
         colors: {for (final entry in players.entries) entry.key: '${(entry.value as Map)['color']}'},
-        onTap: () => onSelect(id),
+        onTapDown: _rememberTap,
+        onTap: () => widget. onSelect(id),
       ),
     );
   }
@@ -1874,12 +2121,14 @@ class _ZoomableBoardState extends State<_ZoomableBoard> {
 
 class _SystemNode extends StatelessWidget {
   const _SystemNode({required this.id, required this.name, required this.pieces, required this.selected,
-    required this.colors, required this.onTap});
+    required this.colors, required this.onTapDown,
+    required this.onTap});
   final String id;
   final String name;
   final List<Map> pieces;
   final bool selected;
   final Map<String, String> colors;
+  final ValueChanged<TapDownDetails> onTapDown;
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) {
@@ -1898,6 +2147,7 @@ class _SystemNode extends StatelessWidget {
           color: selected ? gold : cyan.withValues(alpha: .55), width: selected ? 3 : 1)),
         child: InkWell(
           customBorder: const CircleBorder(),
+          onTapDown: onTapDown,
           onTap: onTap,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1906,8 +2156,19 @@ class _SystemNode extends StatelessWidget {
                 maxLines: 2, overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: gold, fontSize: 10, fontWeight: FontWeight.w900,
                   height: 1.05))),
-              if (!id.endsWith(':gate')) Text(_planetResource(id),
-                style: const TextStyle(color: cyan, fontSize: 9, fontWeight: FontWeight.w600)),
+              if (!id.endsWith(':gate'))
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ResourceIcon(
+                      resource: _planetResource(id),
+                      size: 13,
+                      excludeFromSemantics: true,
+                    ),
+                    const SizedBox(width: 2), Text(_planetResource(id),
+                style: const TextStyle(color: cyan, fontSize: 9, fontWeight: FontWeight.w600),
+                    ),
+                  ]),
               if (pieces.isNotEmpty) const SizedBox(height: 2),
               if (pieces.isNotEmpty) SizedBox(width: 76, child: Wrap(
                 alignment: WrapAlignment.center, spacing: 2, runSpacing: 1, children: [
