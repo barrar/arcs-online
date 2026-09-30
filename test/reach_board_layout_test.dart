@@ -73,4 +73,36 @@ void main() {
     expect(layout.isTwoPlayerSquare, isFalse);
     expect(layout.position('1:gate', size), const Offset(425, 260));
   });
+
+  test('compact phone board pulls systems inward without overlapping nodes', () {
+    const phoneScene = Size(600, 600);
+    for (final (clusters, count) in [
+      ([2, 3, 4, 5], 2),
+      ([1, 2, 3, 4, 5], 3),
+      ([1, 2, 3, 4, 5, 6], 4),
+    ]) {
+      final regular = ReachBoardLayout(activeClusters: clusters, playerCount: count);
+      final compact = ReachBoardLayout(activeClusters: clusters,
+        playerCount: count, compact: true);
+      final positions = <Offset>[];
+      for (final cluster in clusters) {
+        final gate = '$cluster:gate';
+        final planet = '$cluster:arrow';
+        expect((compact.position(gate, size) - compact.position(planet, size)).distance,
+          lessThan((regular.position(gate, size) - regular.position(planet, size)).distance));
+        for (final glyph in ['gate', 'arrow', 'crescent', 'hex']) {
+          final id = '$cluster:$glyph';
+          final point = compact.position(id, phoneScene);
+          expect(point.dx, inInclusiveRange(44, 556));
+          expect(point.dy, inInclusiveRange(44, 556));
+          positions.add(point);
+        }
+      }
+      for (var i = 0; i < positions.length; i++) {
+        for (var j = i + 1; j < positions.length; j++) {
+          expect((positions[i] - positions[j]).distance, greaterThanOrEqualTo(88));
+        }
+      }
+    }
+  });
 }

@@ -6,10 +6,14 @@ class ReachBoardLayout {
   ReachBoardLayout({
     required Iterable<int> activeClusters,
     required this.playerCount,
+    this.compact = false,
   }) : activeClusters = activeClusters.toList()..sort();
 
   final List<int> activeClusters;
   final int playerCount;
+  final bool compact;
+
+  static const compactSquareScale = .8;
 
   bool get isTwoPlayerSquare => playerCount == 2 && activeClusters.length == 4;
 
@@ -34,17 +38,20 @@ class ReachBoardLayout {
         for (var turn = 0; turn < corner; turn++) {
           rotated = Offset(-rotated.dy, rotated.dx);
         }
-        return center + rotated;
+        return center + rotated * (compact ? compactSquareScale : 1.0);
       }
     }
     final angle = (-90 + (cluster - 1) * 60) * math.pi / 180;
     final offset = glyph == 'arrow'
-        ? -17.0
+        ? (compact ? -20.0 : -17.0)
         : glyph == 'hex'
-        ? 17.0
+        ? (compact ? 20.0 : 17.0)
         : 0.0;
-    final radius = glyph == 'gate' ? 165.0 : 335.0;
+    final radius = glyph == 'gate'
+        ? (compact ? 130.0 : 165.0)
+        : (compact ? 255.0 : 335.0);
     final theta = angle + offset * math.pi / 180;
-    return center + Offset(math.cos(theta) * radius, math.sin(theta) * radius);
+    return center + Offset(math.cos(theta) * radius,
+      math.sin(theta) * radius);
   }
 }

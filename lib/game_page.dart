@@ -131,13 +131,34 @@ class _GamePageState extends State<GamePage> {
     final isTurn = actorUid == uid && game['status'] == 'playing';
     final selected = _selectedSystem;
     final status = game['status'] as String;
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 8, 20, 10),
-          child: Row(
-            children: [
-              IconButton(tooltip: 'All tables', onPressed: () => context.go('/'), icon: const Icon(Icons.arrow_back)),
+    return LayoutBuilder(builder: (context, constraints) {
+      final wide = constraints.maxWidth >= 980;
+      final compact = constraints.maxWidth < 600;
+      final mapHeight = wide
+        ? math.max(constraints.maxHeight - 72, 620.0)
+        : compact
+          ? math.min(constraints.maxHeight * .82, 760.0)
+          : math.min(math.max(constraints.maxWidth * 1.25,
+              constraints.maxHeight * .78), 760.0);
+      final board = _ReachBoard(game: game, selectedSystem: selected,
+        compact: compact,
+        onSelect: (systemId) => setState(() => _selectedSystem = systemId));
+      final boardViewport = Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (_) {
+          _boardPointers++;
+          if (_boardPointers == 1) setState(() {});
+        },
+        onPointerUp: (_) => _releaseBoardPointer(),
+        onPointerCancel: (_) => _releaseBoardPointer(),
+        child: SizedBox(height: mapHeight, child: board),
+      );
+      final rail = _rail(game, hand, players, uid, isTurn);
+      final header = Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 20, 10),
+            child: Row(children: [
+              IconButton(tooltip: 'All tables', onPressed: () => context.go('/'),
+                icon: const Icon(Icons.arrow_back)),
               const SizedBox(width: 8),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('${game['name']}', maxLines: 1, overflow: TextOverflow.ellipsis,
@@ -145,46 +166,31 @@ class _GamePageState extends State<GamePage> {
                 Text('CHAPTER ${game['chapter']}  •  ${game['setupId']}  •  ${game['rulesVersion']}',
                   style: const TextStyle(color: muted, fontSize: 11, letterSpacing: 1)),
               ])),
-              if (_busy) const Padding(padding: EdgeInsets.only(right: 12), child: SizedBox(width: 20, height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2))),
+              if (_busy) const Padding(padding: EdgeInsets.only(right: 12),
+                child: SizedBox(width: 20, height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2))),
               _Deadline(deadlineMs: game['deadlineMs'] as int, active: status == 'playing'),
               if (status == 'playing') PopupMenuButton<String>(tooltip: 'Match options',
                 onSelected: (value) { if (value == 'concede') _confirmConcede(); },
-                itemBuilder: (_) => const [PopupMenuItem(value: 'concede', child: Text('Concede match'))]),
-            ],
-          ),
-        ),
-        Expanded(
-          child: LayoutBuilder(builder: (context, constraints) {
-            final wide = constraints.maxWidth >= 980;
-            final board = _ReachBoard(game: game, selectedSystem: selected,
-              onSelect: (systemId) => setState(() => _selectedSystem = systemId));
-            final rail = _rail(game, hand, players, uid, isTurn, wide);
-            return wide
-                ? Row(children: [Expanded(flex: 3, child: board), SizedBox(width: 400, child: rail)])
-                : ListView(
-                      physics: _boardPointers > 0
-                          ? const NeverScrollableScrollPhysics()
-                          : null,children: [SizedBox(height: math.min(
-                            math.max(constraints.maxWidth * 1.25,
-                              constraints.maxHeight * .78,
-                            ),
-                            760.0,
-                          ),
-                          child: Listener(
-                            behavior: HitTestBehavior.opaque,
-                            onPointerDown: (_) {
-                              _boardPointers++;
-                              if (_boardPointers == 1) setState(() {});
-                            },
-                            onPointerUp: (_) => _releaseBoardPointer(),
-                            onPointerCancel: (_) => _releaseBoardPointer(), child: board,
-                          )),
-                    rail]);
-          }),
-        ),
-      ],
-    );
+                itemBuilder: (_) => const [PopupMenuItem(value: 'concede',
+                  child: Text('Concede match'))]),
+            ]),
+          );
+      if (wide) {
+        return NestedScrollView(
+          physics: _boardPointers > 0 ? const NeverScrollableScrollPhysics() : null,
+          headerSliverBuilder: (_, _) => [SliverToBoxAdapter(child: header)],
+          body: Row(children: [
+            Expanded(flex: 3, child: boardViewport),
+            SizedBox(width: 400, child: ListView(children: [rail])),
+          ]),
+        );
+      }
+      return ListView(
+        physics: _boardPointers > 0 ? const NeverScrollableScrollPhysics() : null,
+        children: [header, boardViewport, rail],
+      );
+    });
   }
 
   void _scrollToDecision(bool isTurn) {
@@ -248,7 +254,7 @@ class _GamePageState extends State<GamePage> {
   }
 
   Widget _rail(Map<String, dynamic> game, Map<String, dynamic> hand, Map<String, dynamic> players,
-      String uid, bool isTurn, bool scrollable) {
+      String uid, bool isTurn) {
     final actorUid = game['actorUid'] as String?;
     final actor = actorUid == null ? null : (players[actorUid] as Map?);
     final round = (game['round'] as Map).cast<String, dynamic>();
@@ -302,11 +308,10 @@ class _GamePageState extends State<GamePage> {
         const SizedBox(height: 12),
         _eventHistory(),
       ];
-    final content = Padding(
+    return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 20, 24),
       child: Column(children: children),
     );
-    return scrollable ? SingleChildScrollView(child: content) : content;
   }
 
   Widget _actionInfoPanel(String decision, bool isTurn) => Semantics(
@@ -2043,9 +2048,11 @@ class _DeadlineState extends State<_Deadline> {
 }
 
 class _ReachBoard extends StatefulWidget {
-  const _ReachBoard({required this.game, required this.selectedSystem, required this.onSelect});
+  const _ReachBoard({required this.game, required this.selectedSystem,
+    required this.compact, required this.onSelect});
   final Map<String, dynamic> game;
   final String? selectedSystem;
+  final bool compact;
   final ValueChanged<String?> onSelect;
 
   @override
@@ -2066,13 +2073,10 @@ class _ReachBoardState extends State<_ReachBoard> {
     final active = (widget.game['activeClusters'] as List).cast<int>();
     final systems = (widget.game['systems'] as Map).cast<String, dynamic>();
     final players = (widget.game['players'] as Map).cast<String, dynamic>();
-    final layout = ReachBoardLayout(activeClusters: active, playerCount: players.length);
-    const boardSize = 850.0;
-    return GlassPanel(
-      padding: EdgeInsets.zero,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: LayoutBuilder(
+    final layout = ReachBoardLayout(activeClusters: active,
+      playerCount: players.length, compact: widget.compact);
+    final boardSize = widget.compact ? 600.0 : 850.0;
+    final content = LayoutBuilder(
           builder: (context, constraints) {
             final viewport = constraints.biggest;
             final tooltipWidth = math.min(
@@ -2111,7 +2115,7 @@ class _ReachBoardState extends State<_ReachBoard> {
               key: _boardKey,
               fit: StackFit.expand,
               children: [
-                _ZoomableBoard(
+                _ZoomableBoard(boardSize: boardSize, compact: widget.compact,
                   child: SizedBox(
                     width: boardSize,
                     height: boardSize,
@@ -2161,9 +2165,11 @@ class _ReachBoardState extends State<_ReachBoard> {
               ],
             );
           },
-        ),
-      ),
-    );
+        );
+    return widget.compact
+      ? ColoredBox(color: panel.withValues(alpha: .88), child: ClipRect(child: content))
+      : GlassPanel(padding: EdgeInsets.zero,
+          child: ClipRRect(borderRadius: BorderRadius.circular(20), child: content));
   }
 
   Widget _boardNode(String id, Size size, Map<String, dynamic> systems,
@@ -2179,6 +2185,7 @@ class _ReachBoardState extends State<_ReachBoard> {
         name: _systemName(widget.game, id),
         pieces: (systems[id] as List).cast<Map>(),
         selected: id == widget. selectedSystem,
+        compact: widget.compact,
         colors: {for (final entry in players.entries) entry.key: '${(entry.value as Map)['color']}'},
         onTapDown: _rememberTap,
         onTap: () => widget. onSelect(id),
@@ -2188,15 +2195,17 @@ class _ReachBoardState extends State<_ReachBoard> {
 }
 
 class _ZoomableBoard extends StatefulWidget {
-  const _ZoomableBoard({required this.child});
+  const _ZoomableBoard({required this.child, required this.boardSize,
+    required this.compact});
   final Widget child;
+  final double boardSize;
+  final bool compact;
 
   @override
   State<_ZoomableBoard> createState() => _ZoomableBoardState();
 }
 
 class _ZoomableBoardState extends State<_ZoomableBoard> {
-  static const _boardSize = 850.0;
   final TransformationController _controller = TransformationController();
   Size? _viewport;
 
@@ -2207,10 +2216,13 @@ class _ZoomableBoardState extends State<_ZoomableBoard> {
   }
 
   void _fit(Size viewport) {
-    final scale = (math.min(viewport.width, viewport.height) * .94 / _boardSize).clamp(.3, 4.0);
+    final boardSize = widget.boardSize;
+    final paddingFactor = widget.compact ? 1.0 : .94;
+    final scale = (math.min(viewport.width, viewport.height) * paddingFactor / boardSize)
+      .clamp(.3, 4.0);
     _controller.value = Matrix4.identity()
-      ..translateByDouble((viewport.width - _boardSize * scale) / 2,
-          (viewport.height - _boardSize * scale) / 2, 0, 1)
+      ..translateByDouble((viewport.width - boardSize * scale) / 2,
+          (viewport.height - boardSize * scale) / 2, 0, 1)
       ..scaleByDouble(scale, scale, 1, 1);
   }
 
@@ -2265,12 +2277,13 @@ class _ZoomableBoardState extends State<_ZoomableBoard> {
 
 class _SystemNode extends StatelessWidget {
   const _SystemNode({required this.id, required this.name, required this.pieces, required this.selected,
-    required this.colors, required this.onTapDown,
+    required this.compact, required this.colors, required this.onTapDown,
     required this.onTap});
   final String id;
   final String name;
   final List<Map> pieces;
   final bool selected;
+  final bool compact;
   final Map<String, String> colors;
   final ValueChanged<TapDownDetails> onTapDown;
   final VoidCallback onTap;
@@ -2298,7 +2311,7 @@ class _SystemNode extends StatelessWidget {
             children: [
               SizedBox(width: 76, child: Text(name, textAlign: TextAlign.center,
                 maxLines: 2, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: gold, fontSize: 10, fontWeight: FontWeight.w900,
+                style: TextStyle(color: gold, fontSize: compact ? 15 : 10, fontWeight: FontWeight.w900,
                   height: 1.05))),
               if (!id.endsWith(':gate'))
                 Row(
@@ -2306,11 +2319,12 @@ class _SystemNode extends StatelessWidget {
                   children: [
                     ResourceIcon(
                       resource: _planetResource(id),
-                      size: 13,
+                      size: compact ? 16 : 13,
                       excludeFromSemantics: true,
                     ),
                     const SizedBox(width: 2), Text(_planetResource(id),
-                style: const TextStyle(color: cyan, fontSize: 9, fontWeight: FontWeight.w600),
+                style: TextStyle(color: cyan, fontSize: compact ? 11 : 9,
+                  fontWeight: FontWeight.w600),
                     ),
                   ]),
               if (pieces.isNotEmpty) const SizedBox(height: 2),
@@ -2345,7 +2359,6 @@ class _ReachPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final active = layout.activeClusters;
-    final center = Offset(size.width / 2, size.height / 2);
     final pathPaint = Paint()..color = cyan.withValues(alpha: .3)..strokeWidth = 3;
     final localPaint = Paint()..color = gold.withValues(alpha: .18)..strokeWidth = 2;
     void connect(String a, String b, Paint paint) => canvas.drawLine(
@@ -2362,12 +2375,10 @@ class _ReachPainter extends CustomPainter {
     }
     if (active.contains(2) && active.contains(3)) connect('2:hex', '3:arrow', localPaint);
     if (active.contains(5) && active.contains(6)) connect('5:hex', '6:arrow', localPaint);
-    final title = TextPainter(text: const TextSpan(text: 'THE REACH', style: TextStyle(color: gold,
-      fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 3)), textDirection: TextDirection.ltr)..layout();
-    title.paint(canvas, center - Offset(title.width / 2, title.height / 2));
   }
   @override
   bool shouldRepaint(covariant _ReachPainter oldDelegate) =>
+    layout.compact != oldDelegate.layout.compact ||
     layout.playerCount != oldDelegate.layout.playerCount ||
     layout.activeClusters.join(',') != oldDelegate.layout.activeClusters.join(',');
 }
