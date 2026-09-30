@@ -17,6 +17,7 @@ class CourtCard {
   final String text;
 
   String get plainText => text.replaceAll(RegExp(r'\*+'), '').trim();
+  String get artPath => 'assets/court_art/bc${id.substring(id.length - 2)}.jpg';
 }
 
 Future<List<CourtCard>> loadBaseCourt() async {

@@ -65,6 +65,7 @@ flutter:
 
   assets:
     - assets/cards/base_court.json
+    - assets/court_art/
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
