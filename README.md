@@ -22,7 +22,7 @@ flutter run -d chrome --web-port=7357 --dart-define=USE_EMULATORS=true
 
 The app uses local Auth, Firestore, and Functions when `USE_EMULATORS=true`; it does not change production data. [Deployment and local setup notes](docs/deployment.md) explain emulator checks and optional configuration.
 
-Google sign-in and guest-account linking are available in the local web build. The Firebase project's Google provider and OAuth brand are enabled; the newer account screen has not been deployed to Hosting. Browser push is optional turn notification and remains deferred. It requires a Firebase Web Push VAPID key supplied as `FCM_VAPID_KEY`; the notification trigger is not deployed yet.
+Google sign-in and guest-account linking are included in the hosted web client. The Firebase project's Google provider and OAuth brand are enabled; a real Google popup still needs a live smoke test. Browser push is optional turn notification and remains deferred. It requires a Firebase Web Push VAPID key supplied as `FCM_VAPID_KEY`; the notification trigger is not deployed yet.
 
 ## Verification
 

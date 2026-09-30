@@ -32,7 +32,8 @@ This list is for the English, official **2–4-player base game**. Continue usin
 ## 5. Release gate, only when requested
 
 - [ ] Re-run backend checks, Flutter analysis/tests, local emulator checks, and a production-mode web build.
-- [ ] On explicit instruction to deploy, publish the reviewed build and smoke-test a disposable production match; remove only that disposable test data afterward.
-- [ ] Update the coverage and deployment notes with the exact checks performed and any remaining limitations.
+- [x] On explicit instruction, publish the reviewed web build and verify the hosted home page, an existing saved game, and Court images.
+- [ ] Smoke-test a disposable production match against the newly hosted client; remove only its disposable test data afterward.
+- [x] Update the deployment notes with the release checks and remaining limitations.
 
-**Deferred by request:** Android and iPhone builds, browser push, Leaders & Lore, and campaign content. Google Authentication is enabled; the newer sign-in UI is local until an authorized Hosting deployment. Five-player play is outside the official base game.
+**Deferred by request:** Android and iPhone builds, browser push, Leaders & Lore, and campaign content. Google Authentication and the newer sign-in UI are hosted; a real Google popup still needs a live smoke test. Five-player play is outside the official base game.
