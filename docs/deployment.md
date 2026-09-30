@@ -2,6 +2,8 @@
 
 The Flutter web release is live at [arcs-online-jeremiah-2026.web.app](https://arcs-online-jeremiah-2026.web.app/). The Firebase project is `arcs-online-jeremiah-2026` in `us-west1` on Blaze. Anonymous, email/password, and Google Authentication providers are enabled. Firestore rules and indexes, and the lobby and game callables are deployed. The September 30, 2026 Hosting release includes Court-targeted Secure and Influence selection, colored per-player agent counts, full-art views for owned Guild cards, and the responsive map and scrolling title bar. It also includes the earlier account and map UI changes and all 31 original Court illustrations. The deployment script passed 82 backend tests, Flutter analysis and tests, and its live `index.html`, `flutter_bootstrap.js`, and `main.dart.js` matched the production build byte for byte. A game deep link returned HTTP 200. A prior production smoke test passed for guest sign-in, a private lobby, match start, hidden hands, command submission, and termination; its disposable documents were deleted afterward. A full match has not been repeated against this client release.
 
+The latest phone-map update enlarges system labels and building icons, places a ship total just outside each system, and groups the pop-up's ships by owner with fresh and damaged counts. City and starport owners and damage labels remain visible. The deployed two-player game was checked at 390 × 844, including planet, city, starport, and gate details; the live web files matched the release build.
+
 From the project root, use Node.js 22+, Java 21, Flutter, and a current Firebase CLI:
 
 ```sh

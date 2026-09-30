@@ -13,6 +13,7 @@ import 'reach_board_layout.dart';
 import 'reach_names.dart';
 import 'resource_icon.dart';
 import 'services.dart';
+import 'system_piece_summary.dart';
 import 'theme.dart';
 
 class GamePage extends StatefulWidget {
@@ -137,7 +138,7 @@ class _GamePageState extends State<GamePage> {
       final mapHeight = wide
         ? math.max(constraints.maxHeight - 72, 620.0)
         : compact
-          ? math.min(constraints.maxHeight * .82, 760.0)
+          ? math.min(constraints.maxHeight * .76, 700.0)
           : math.min(math.max(constraints.maxWidth * 1.25,
               constraints.maxHeight * .78), 760.0);
       final board = _ReachBoard(game: game, selectedSystem: selected,
@@ -1929,6 +1930,19 @@ Widget _systemDetails(
   if (!systems.containsKey(systemId)) return const SizedBox.shrink();
   final players = (game['players'] as Map).cast<String, dynamic>();
   final pieces = (systems[systemId] as List).cast<Map>();
+  final summary = SystemPieceSummary.fromPieces(pieces);
+  final owners = {
+    ...players.keys,
+    ...summary.shipsByOwner.keys,
+  };
+  final shipOwners = owners.where((owner) =>
+    (summary.shipsByOwner[owner]?.total ?? 0) > 0);
+  final buildings = pieces.where((piece) =>
+    piece['kind'] == 'city' || piece['kind'] == 'starport');
+  String ownerName(String owner) =>
+    '${(players[owner] as Map?)?['name'] ?? owner}';
+  Color ownerColor(String owner) =>
+    _playerColor('${(players[owner] as Map?)?['color'] ?? ''}');
   final name = _systemName(game, systemId);
   return Semantics(
     container: true,
@@ -1983,33 +1997,61 @@ Widget _systemDetails(
               ],
             ),
           const SizedBox(height: 9),
-          if (pieces.isEmpty)
+          if (summary.isEmpty)
             const Text('No pieces here.', style: TextStyle(color: muted)),
-          for (final piece in pieces)
+          if (shipOwners.isNotEmpty) ...[
+            const Text('SHIPS', style: TextStyle(color: muted, fontSize: 10,
+              fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+            const SizedBox(height: 4),
+          ],
+          for (final owner in shipOwners)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
+              padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 children: [
-                  Icon(
-                    _pieceIcon('${piece['kind']}'),
-                    size: 16,
-                    color: _playerColor(
-                      '${(players['${piece['owner']}'] as Map)['color']}',
-                    ),
-                  ),
-                  const SizedBox(width: 7),
+                  Icon(_pieceIcon('ship'), size: 19,
+                    color: ownerColor(owner)),
+                  const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      '${(players['${piece['owner']}'] as Map)['name']} · ${piece['kind']} '
-                      '${piece['damaged'] == true ? '· DAMAGED' : ''}',
-                      style: TextStyle(
-                        color: _playerColor(
-                          '${(players['${piece['owner']}'] as Map)['color']}',
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(ownerName(owner), style: TextStyle(
+                          color: ownerColor(owner), fontSize: 12,
+                          fontWeight: FontWeight.w800)),
+                        Text(
+                          '${summary.shipsByOwner[owner]!.total} '
+                          "${summary.shipsByOwner[owner]!.total == 1 ? 'ship' : 'ships'} · "
+                          '${summary.shipsByOwner[owner]!.fresh} fresh · '
+                          '${summary.shipsByOwner[owner]!.damaged} damaged',
+                          style: const TextStyle(color: muted, fontSize: 11),
                         ),
-                        fontSize: 12,
-                      ),
+                      ],
                     ),
                   ),
+                ],
+              ),
+            ),
+          if (buildings.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Text('CITIES & STARPORTS', style: TextStyle(color: muted,
+              fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+            const SizedBox(height: 4),
+          ],
+          for (final building in buildings)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Icon(_pieceIcon('${building['kind']}'), size: 18,
+                    color: ownerColor('${building['owner']}')),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(
+                    "${ownerName('${building['owner']}')} · "
+                    "${building['kind'] == 'city' ? 'City' : 'Starport'}"
+                    "${building['damaged'] == true ? ' · DAMAGED' : ''}",
+                    style: TextStyle(color: ownerColor('${building['owner']}'),
+                      fontSize: 12),
+                  )),
                 ],
               ),
             ),
@@ -2083,11 +2125,15 @@ class _ReachBoardState extends State<_ReachBoard> {
               320.0,
               math.max(0.0, viewport.width - 24),
             );
-            final selectedPieces = widget.selectedSystem == null
-                ? 0
-                : ((systems[widget.selectedSystem] as List?)?.length ?? 0);
+            final selectedSystemPieces = systems[widget.selectedSystem];
+            final selectedPieces = selectedSystemPieces is List
+                ? SystemPieceSummary.fromPieces(selectedSystemPieces.cast<Map>())
+                : null;
+            final detailRows = selectedPieces == null ? 0 :
+                selectedPieces.shipsByOwner.length +
+                selectedPieces.totalCities + selectedPieces.totalStarports;
             final tooltipHeight = math.min(
-              math.min(280.0, 132.0 + selectedPieces * 24.0),
+              math.min(380.0, 142.0 + detailRows * 50.0),
               math.max(0.0, viewport.height - 24),
             );
             final anchor =
@@ -2139,10 +2185,12 @@ class _ReachBoardState extends State<_ReachBoard> {
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     for (final kind in ['ship', 'city', 'starport']) ...[
                       if (kind != 'ship') const SizedBox(width: 12),
-                      Icon(_pieceIcon(kind), size: 14, color: cyan),
+                      Icon(_pieceIcon(kind), size: widget.compact ? 17 : 14,
+                        color: cyan),
                       const SizedBox(width: 4),
                       Text(kind == 'starport' ? 'Starport' : kind == 'city' ? 'City' : 'Ship',
-                        style: const TextStyle(color: muted, fontSize: 10)),
+                        style: TextStyle(color: muted,
+                          fontSize: widget.compact ? 11 : 10)),
                     ],
                   ]),
                 ))),
@@ -2175,20 +2223,23 @@ class _ReachBoardState extends State<_ReachBoard> {
   Widget _boardNode(String id, Size size, Map<String, dynamic> systems,
       Map<String, dynamic> players, ReachBoardLayout layout) {
     final position = layout.position(id, size);
+    final frameSize = widget.compact ? 160.0 : 88.0;
     return Positioned(
-      left: position.dx - 44,
-      top: position.dy - 44,
-      width: 88,
-      height: 88,
+      left: position.dx - frameSize / 2,
+      top: position.dy - frameSize / 2,
+      width: frameSize,
+      height: frameSize,
       child: _SystemNode(
         id: id,
         name: _systemName(widget.game, id),
         pieces: (systems[id] as List).cast<Map>(),
-        selected: id == widget. selectedSystem,
+        selected: id == widget.selectedSystem,
         compact: widget.compact,
+        inwardAngle: math.atan2(size.height / 2 - position.dy,
+          size.width / 2 - position.dx),
         colors: {for (final entry in players.entries) entry.key: '${(entry.value as Map)['color']}'},
         onTapDown: _rememberTap,
-        onTap: () => widget. onSelect(id),
+        onTap: () => widget.onSelect(id),
       ),
     );
   }
@@ -2277,27 +2328,66 @@ class _ZoomableBoardState extends State<_ZoomableBoard> {
 
 class _SystemNode extends StatelessWidget {
   const _SystemNode({required this.id, required this.name, required this.pieces, required this.selected,
-    required this.compact, required this.colors, required this.onTapDown,
+    required this.compact, required this.inwardAngle, required this.colors, required this.onTapDown,
     required this.onTap});
   final String id;
   final String name;
   final List<Map> pieces;
   final bool selected;
   final bool compact;
+  final double inwardAngle;
   final Map<String, String> colors;
   final ValueChanged<TapDownDetails> onTapDown;
   final VoidCallback onTap;
+
+  Widget _orbitBadge(int shipCount, bool hasDamage, Color color) {
+    const frameCenter = 80.0;
+    const orbitRadius = 60.0;
+    const badgeWidth = 34.0;
+    const badgeHeight = 24.0;
+    return Positioned(
+      left: frameCenter + math.cos(inwardAngle) * orbitRadius - badgeWidth / 2,
+      top: frameCenter + math.sin(inwardAngle) * orbitRadius - badgeHeight / 2,
+      width: badgeWidth,
+      height: badgeHeight,
+      child: IgnorePointer(child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: panel,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: hasDamage ? Colors.white : color, width: 1.2),
+        ),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(_pieceIcon('ship'), size: 17, color: color),
+          const SizedBox(width: 1),
+          Text('$shipCount', style: TextStyle(color: color,
+            fontSize: 12, fontWeight: FontWeight.w900)),
+        ]),
+      )),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final ships = pieces.where((piece) => piece['kind'] == 'ship').length;
-    final cities = pieces.where((piece) => piece['kind'] == 'city').length;
-    final starports = pieces.where((piece) => piece['kind'] == 'starport').length;
-    final markers = [...pieces]..sort((a, b) =>
+    final summary = SystemPieceSummary.fromPieces(pieces);
+    final markers = [
+      for (final piece in pieces)
+        if (!compact || piece['kind'] != 'ship') piece,
+    ]..sort((a, b) =>
       _pieceOrder('${a['kind']}').compareTo(_pieceOrder('${b['kind']}')));
-    final shown = markers.take(markers.length > 8 ? 7 : 8);
-    return Semantics(
+    final maxMarkers = compact ? 4 : 8;
+    final shown = markers.take(markers.length > maxMarkers
+      ? maxMarkers - 1 : maxMarkers);
+    final shipColor = summary.shipsByOwner.length == 1
+      ? _playerColor(colors[summary.shipsByOwner.keys.first] ?? '')
+      : cyan;
+    final hasDamagedShips = summary.shipsByOwner.values.any(
+      (ships) => ships.damaged > 0);
+    final diameter = compact ? 92.0 : 88.0;
+    final circle = Semantics(
       button: true,
-      label: '$name, $ships ships, $cities cities, $starports starports',
+      label: '$name, ${summary.totalShips} ships, '
+        '${summary.totalCities} cities, ${summary.totalStarports} starports',
       child: Material(
         color: selected ? gold.withValues(alpha: .25) : panel.withValues(alpha: .95),
         shape: CircleBorder(side: BorderSide(
@@ -2309,9 +2399,9 @@ class _SystemNode extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              SizedBox(width: 76, child: Text(name, textAlign: TextAlign.center,
+              SizedBox(width: compact ? 82 : 76, child: Text(name, textAlign: TextAlign.center,
                 maxLines: 2, overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: gold, fontSize: compact ? 15 : 10, fontWeight: FontWeight.w900,
+                style: TextStyle(color: gold, fontSize: compact ? 16 : 10, fontWeight: FontWeight.w900,
                   height: 1.05))),
               if (!id.endsWith(':gate'))
                 Row(
@@ -2319,30 +2409,36 @@ class _SystemNode extends StatelessWidget {
                   children: [
                     ResourceIcon(
                       resource: _planetResource(id),
-                      size: compact ? 16 : 13,
+                      size: compact ? 18 : 13,
                       excludeFromSemantics: true,
                     ),
                     const SizedBox(width: 2), Text(_planetResource(id),
-                style: TextStyle(color: cyan, fontSize: compact ? 11 : 9,
+                style: TextStyle(color: cyan, fontSize: compact ? 12 : 9,
                   fontWeight: FontWeight.w600),
                     ),
                   ]),
-              if (pieces.isNotEmpty) const SizedBox(height: 2),
-              if (pieces.isNotEmpty) SizedBox(width: 76, child: Wrap(
+              if (markers.isNotEmpty) const SizedBox(height: 2),
+              if (markers.isNotEmpty) SizedBox(width: compact ? 82 : 76, child: Wrap(
                 alignment: WrapAlignment.center, spacing: 2, runSpacing: 1, children: [
                   for (final piece in shown) Tooltip(
                     message: '${colors['${piece['owner']}'] ?? 'Unknown'} ${piece['kind']}'
                       '${piece['damaged'] == true ? ' (damaged)' : ''}',
-                    child: Container(width: 16, height: 16, alignment: Alignment.center,
+                    child: Container(
+                      width: compact ? 20 : 16,
+                      height: compact ? 20 : 16,
+                      alignment: Alignment.center,
                       decoration: BoxDecoration(borderRadius: BorderRadius.circular(4),
                         border: piece['damaged'] == true
                           ? Border.all(color: Colors.white, width: 1) : null),
-                      child: Icon(_pieceIcon('${piece['kind']}'), size: 14,
+                      child: Icon(_pieceIcon('${piece['kind']}'),
+                        size: compact ? 18 : 14,
                         color: _playerColor(colors['${piece['owner']}'] ?? ''))),
                   ),
-                  if (markers.length > 8) SizedBox(width: 22, height: 16,
-                    child: Center(child: Text('+${markers.length - 7}',
-                      style: const TextStyle(color: muted, fontSize: 9)))),
+                  if (markers.length > maxMarkers) SizedBox(
+                    width: compact ? 24 : 22, height: compact ? 20 : 16,
+                    child: Center(child: Text('+${markers.length - (maxMarkers - 1)}',
+                      style: TextStyle(color: muted,
+                        fontSize: compact ? 11 : 9)))),
                 ],
               )),
             ],
@@ -2350,6 +2446,16 @@ class _SystemNode extends StatelessWidget {
         ),
       ),
     );
+    if (!compact) return circle;
+    return SizedBox(width: 160, height: 160, child: Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned(left: (160 - diameter) / 2, top: (160 - diameter) / 2,
+          width: diameter, height: diameter, child: circle),
+        if (summary.totalShips > 0)
+          _orbitBadge(summary.totalShips, hasDamagedShips, shipColor),
+      ],
+    ));
   }
 }
 
