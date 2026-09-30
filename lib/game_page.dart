@@ -24,6 +24,12 @@ class GamePage extends StatefulWidget {
   State<GamePage> createState() => _GamePageState();
 }
 
+class _PendingCourtChoice {
+  _PendingCourtChoice(this.kind);
+  final String kind;
+  final Completer<int?> result = Completer<int?>();
+}
+
 class _GamePageState extends State<GamePage> {
   late final Future<User> _guest = widget.service.ensureGuest();
   late final Stream<DocumentSnapshot<Map<String, dynamic>>> _game = widget.service.game(widget.gameId);
@@ -31,6 +37,7 @@ class _GamePageState extends State<GamePage> {
   final Map<String, Stream<DocumentSnapshot<Map<String, dynamic>>>> _hands = {};
   final GlobalKey _decisionKey = GlobalKey();
   final GlobalKey _actionsKey = GlobalKey();
+  final GlobalKey _courtKey = GlobalKey();
   late final Future<List<CourtCard>> _catalog = loadBaseCourt();
   late final Future<Map<String, CourtCard>> _courtCards = _catalog.then(
     (cards) => {for (final card in cards) card.id: card});
@@ -44,6 +51,7 @@ class _GamePageState extends State<GamePage> {
   bool _showAllEvents = false;
   bool _showActionInfo = true;
   int _boardPointers = 0;
+  _PendingCourtChoice? _pendingCourtChoice;
   String? _failedCommandJson;
   String? _failedCommandId;
   Timer? _refreshClock;
@@ -57,6 +65,8 @@ class _GamePageState extends State<GamePage> {
   @override
   void dispose() {
     _refreshClock?.cancel();
+    final choice = _pendingCourtChoice;
+    if (choice != null && !choice.result.isCompleted) choice.result.complete(null);
     super.dispose();
   }
 
@@ -186,6 +196,28 @@ class _GamePageState extends State<GamePage> {
     }
   }
 
+  Future<int?> _chooseCourtCard(String kind) {
+    final choice = _PendingCourtChoice(kind);
+    setState(() => _pendingCourtChoice = choice);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !identical(_pendingCourtChoice, choice)) return;
+      final target = _courtKey.currentContext;
+      if (target != null) {
+        Scrollable.ensureVisible(target,
+          duration: const Duration(milliseconds: 450), alignment: .08,
+          curve: Curves.easeOutCubic);
+      }
+    });
+    return choice.result.future;
+  }
+
+  void _completeCourtChoice(int? index) {
+    final choice = _pendingCourtChoice;
+    if (choice == null) return;
+    setState(() => _pendingCourtChoice = null);
+    if (!choice.result.isCompleted) choice.result.complete(index);
+  }
+
   void _releaseBoardPointer() {
     if (_boardPointers == 0) return;
     _boardPointers--;
@@ -266,16 +298,15 @@ class _GamePageState extends State<GamePage> {
         const SizedBox(height: 12),
         _personalBoard(game, me),
         const SizedBox(height: 12),
-        _court(game, uid, isTurn),
+        KeyedSubtree(key: _courtKey, child: _court(game, uid, isTurn)),
         const SizedBox(height: 12),
         _eventHistory(),
       ];
-    return ListView(
+    final content = Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 20, 24),
-      shrinkWrap: !scrollable,
-      physics: scrollable ? null : const NeverScrollableScrollPhysics(),
-      children: children,
+      child: Column(children: children),
     );
+    return scrollable ? SingleChildScrollView(child: content) : content;
   }
 
   Widget _actionInfoPanel(String decision, bool isTurn) => Semantics(
@@ -399,22 +430,116 @@ class _GamePageState extends State<GamePage> {
         FutureBuilder<List<CourtCard>>(future: _catalog, builder: (context, snapshot) {
           final cards = {for (final card in snapshot.data ?? <CourtCard>[]) card.id: card};
           return Wrap(spacing: 6, runSpacing: 6, children: [for (final id in guilds)
-            Chip(
+            ActionChip(
               avatar: cards[id] == null ? null : ClipOval(child: Image.asset(
                 cards[id]!.artPath, width: 24, height: 24, fit: BoxFit.cover,
                 excludeFromSemantics: true,
               )),
               label: Text(cards[id]?.name ?? id),
+              onPressed: cards[id] == null ? null : () => _showGuildCard(cards[id]!),
             )]);
         }),
       ],
     ]));
   }
 
+  void _showGuildCard(CourtCard card) {
+    showModalBottomSheet<void>(context: context, showDragHandle: true,
+      isScrollControlled: true, useSafeArea: true,
+      constraints: const BoxConstraints(maxWidth: 600),
+      builder: (sheet) {
+        final viewport = MediaQuery.sizeOf(sheet);
+        final artSize = math.min(math.min(viewport.width - 48, viewport.height * .36), 280.0);
+        return SingleChildScrollView(child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
+          child: Column(mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Center(child: ClipRRect(borderRadius: BorderRadius.circular(12),
+              child: Image.asset(card.artPath, width: artSize, height: artSize,
+                fit: BoxFit.cover, semanticLabel: '${card.name} artwork'))),
+            const SizedBox(height: 16),
+            Text(card.name, style: Theme.of(sheet).textTheme.titleLarge),
+            Padding(padding: const EdgeInsets.only(top: 3),
+              child: Text('GUILD · ${card.suit?.toUpperCase() ?? ''}',
+                style: const TextStyle(color: gold, fontSize: 11, letterSpacing: 1.4))),
+            const SizedBox(height: 12),
+            Text(card.plainText, style: const TextStyle(color: muted)),
+            const SizedBox(height: 16),
+            Align(alignment: Alignment.centerRight,
+              child: TextButton(onPressed: () => Navigator.pop(sheet),
+                child: const Text('Close'))),
+          ]),
+        ));
+      },
+    );
+  }
+
+  List<String> _courtAgentOwners(Map<String, dynamic> game, Map slot) {
+    final agents = slot['agents'] as Map;
+    return (game['order'] as List).cast<String>()
+      .where((uid) => (agents[uid] as int? ?? 0) > 0).toList();
+  }
+
+  Widget _courtAgentSummary(Map<String, dynamic> game, Map slot) {
+    final owners = _courtAgentOwners(game, slot);
+    if (owners.isEmpty) {
+      return const Text('No agents',
+        style: TextStyle(color: muted, fontSize: 11));
+    }
+    final agents = slot['agents'] as Map;
+    final players = game['players'] as Map;
+    final description = [for (final uid in owners)
+      '${(players[uid] as Map)['name']}: ${agents[uid]} agents'].join('\n');
+    return Tooltip(message: description, child: Text.rich(
+      TextSpan(children: [for (var index = 0; index < owners.length; index++) ...[
+        if (index > 0) const TextSpan(text: ' / ', style: TextStyle(color: muted)),
+        TextSpan(text: '${agents[owners[index]]}', style: TextStyle(
+          color: _playerColor('${(players[owners[index]] as Map)['color']}'),
+          fontWeight: FontWeight.w900)),
+      ]]),
+      semanticsLabel: description.replaceAll('\n', ', '),
+      style: const TextStyle(fontSize: 14),
+    ));
+  }
+
+  Widget _courtAgentDetails(Map<String, dynamic> game, Map slot) {
+    final owners = _courtAgentOwners(game, slot);
+    final agents = slot['agents'] as Map;
+    final players = game['players'] as Map;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('AGENTS ON THIS CARD', style: TextStyle(
+        color: gold, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+      const SizedBox(height: 9),
+      if (owners.isEmpty) const Text('No agents on this card.',
+        style: TextStyle(color: muted)),
+      for (final uid in owners) Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(children: [
+          CircleAvatar(radius: 6,
+            backgroundColor: _playerColor('${(players[uid] as Map)['color']}')),
+          const SizedBox(width: 9),
+          Expanded(child: Text('${(players[uid] as Map)['name']}')),
+          Text('${agents[uid]}', style: TextStyle(
+            color: _playerColor('${(players[uid] as Map)['color']}'),
+            fontSize: 17, fontWeight: FontWeight.w900)),
+        ]),
+      ),
+    ]);
+  }
+
   Widget _court(Map<String, dynamic> game, String uid, bool isTurn) {
     final slots = (game['courtRow'] as List).cast<Map>();
     return GlassPanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Text('THE COURT', style: TextStyle(color: gold, fontWeight: FontWeight.w800, letterSpacing: 2)),
+      if (_pendingCourtChoice != null) Padding(
+        padding: const EdgeInsets.only(top: 9),
+        child: Row(children: [
+          Expanded(child: Text('Choose a card to ${_pendingCourtChoice!.kind}.',
+            style: const TextStyle(color: cyan, fontWeight: FontWeight.w700))),
+          TextButton(onPressed: () => _completeCourtChoice(null),
+            child: const Text('Cancel')),
+        ]),
+      ),
       const SizedBox(height: 10),
       FutureBuilder<List<CourtCard>>(future: _catalog, builder: (context, catalog) {
         final cards = {for (final card in catalog.data ?? <CourtCard>[]) card.id: card};
@@ -442,8 +567,11 @@ class _GamePageState extends State<GamePage> {
                   style: const TextStyle(color: muted, fontSize: 10, letterSpacing: 1)),
               ])),
               const SizedBox(width: 8),
-              Text('${(slots[index]['agents'] as Map)[uid] ?? 0} agents',
-                style: const TextStyle(color: cyan, fontSize: 11)),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                const Text('AGENTS', style: TextStyle(
+                  color: muted, fontSize: 9, letterSpacing: .8)),
+                _courtAgentSummary(game, slots[index]),
+              ]),
             ]),
           ))]);
       }),
@@ -576,13 +704,17 @@ class _GamePageState extends State<GamePage> {
         const SizedBox(height: 10),
         Wrap(spacing: 8, runSpacing: 8, children: [
           if ((game['turn'] as Map)['canRearrange'] == true)
-            OutlinedButton(onPressed: _busy ? null : () => _arrangeResources(game, uid),
+            OutlinedButton(onPressed: _busy || _pendingCourtChoice != null
+              ? null : () => _arrangeResources(game, uid),
               child: const Text('Arrange resources')),
-          ElevatedButton(onPressed: _busy || round['remainingPips'] == 0 ? null : () => _showActionPicker(game, uid),
+          ElevatedButton(onPressed: _busy || _pendingCourtChoice != null || round['remainingPips'] == 0
+            ? null : () => _showActionPicker(game, uid),
             child: const Text('Take an action')),
           if ((game['turn'] as Map)['preludeOpen'] == true)
-            OutlinedButton(onPressed: _busy ? null : () => _showPrelude(game, hand, uid), child: const Text('Prelude & resources')),
-          OutlinedButton(onPressed: _busy ? null : () => _send({'kind': 'end-turn'}), child: const Text('End turn')),
+            OutlinedButton(onPressed: _busy || _pendingCourtChoice != null
+              ? null : () => _showPrelude(game, hand, uid), child: const Text('Prelude & resources')),
+          OutlinedButton(onPressed: _busy || _pendingCourtChoice != null
+            ? null : () => _send({'kind': 'end-turn'}), child: const Text('End turn')),
         ]),
       ] else if (isTurn && round['playedThisTurn'] != true) ...[
         const Text('Play an action card, or pass the initiative.'),
@@ -635,6 +767,8 @@ class _GamePageState extends State<GamePage> {
 
   void _showCourtCard(Map<String, dynamic> game, int index,
       CourtCard? card, String uid, bool isTurn) {
+    final slot = (game['courtRow'] as List)[index] as Map;
+    final pendingChoice = _pendingCourtChoice;
     final round = game['round'] as Map;
     final plays = (round['plays'] as List).cast<Map>();
     final currentPlay = plays.isEmpty ? null : plays.last;
@@ -656,7 +790,7 @@ class _GamePageState extends State<GamePage> {
       isScrollControlled: true, useSafeArea: true,
       constraints: const BoxConstraints(maxWidth: 600),
       builder: (sheet) {
-        final id = '${(game['courtRow'] as List)[index]['cardId']}';
+        final id = '${slot['cardId']}';
         final viewport = MediaQuery.sizeOf(sheet);
         final artSize = math.min(math.min(viewport.width - 48, viewport.height * .36), 280.0);
         return SingleChildScrollView(child: Padding(
@@ -677,12 +811,24 @@ class _GamePageState extends State<GamePage> {
             const SizedBox(height: 12),
             Text(card?.plainText ?? id, style: const TextStyle(color: muted)),
             const SizedBox(height: 18),
-            if (canPip) Wrap(spacing: 8, children: [
+            _courtAgentDetails(game, slot),
+            const SizedBox(height: 18),
+            if (pendingChoice != null) ElevatedButton(
+              onPressed: () {
+                Navigator.pop(sheet);
+                if (identical(_pendingCourtChoice, pendingChoice)) _completeCourtChoice(index);
+              },
+              child: Text(pendingChoice.kind == 'secure'
+                ? 'Secure this card' : 'Influence this card'),
+            ) else if (canPip) Wrap(spacing: 8, children: [
               OutlinedButton(onPressed: _busy || !['administration', 'mobilization'].contains(suit) ? null : () { Navigator.pop(sheet); _send({'kind': 'pip', 'action': {'kind': 'influence', 'courtIndex': index}}); },
                 child: const Text('Influence')),
               ElevatedButton(onPressed: _busy || suit != 'aggression' ? null : () { Navigator.pop(sheet); _send({'kind': 'pip', 'action': {'kind': 'secure', 'courtIndex': index}}); },
                 child: const Text('Secure')),
             ]),
+            Align(alignment: Alignment.centerRight,
+              child: TextButton(onPressed: () => Navigator.pop(sheet),
+                child: Text(pendingChoice == null ? 'Close' : 'Back to Court'))),
           ]),
         ));
       },
@@ -858,10 +1004,8 @@ class _GamePageState extends State<GamePage> {
         return id == null ? null : {'kind': 'repair', 'pieceId': id};
       }
       case 'influence': case 'secure': {
-        final court = (game['courtRow'] as List).cast<Map>();
-        final index = await _pick('${kind == 'influence' ? 'Influence' : 'Secure'} Court card',
-          await _courtChoiceOptions(court));
-        return index == null ? null : {'kind': kind, 'courtIndex': int.parse(index)};
+        final index = await _chooseCourtCard(kind);
+        return index == null ? null : {'kind': kind, 'courtIndex': index};
       }
       case 'battle': {
         final origins = pieces.where((piece) => piece['owner'] == uid && piece['kind'] == 'ship')
