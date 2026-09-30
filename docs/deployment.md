@@ -1,6 +1,6 @@
 # Web release and local development
 
-The Flutter web release is live at [arcs-online-jeremiah-2026.web.app](https://arcs-online-jeremiah-2026.web.app/). The Firebase project is `arcs-online-jeremiah-2026` in `us-west1` on Blaze. Anonymous, email/password, and Google Authentication providers are enabled. Firestore rules and indexes, and the lobby and game callables are deployed. The September 30, 2026 Hosting release adds Court-targeted Secure and Influence selection, colored per-player agent counts, and full-art views for owned Guild cards. It includes the earlier account and map UI changes and all 31 original Court illustrations. The hosted home page and an existing saved game loaded after deployment. The Court selection flow was checked locally at desktop and narrow widths, including cancellation without sending a command. A prior production smoke test passed for guest sign-in, a private lobby, match start, hidden hands, command submission, and termination; its disposable documents were deleted afterward. A full match has not been repeated against this client release.
+The Flutter web release is live at [arcs-online-jeremiah-2026.web.app](https://arcs-online-jeremiah-2026.web.app/). The Firebase project is `arcs-online-jeremiah-2026` in `us-west1` on Blaze. Anonymous, email/password, and Google Authentication providers are enabled. Firestore rules and indexes, and the lobby and game callables are deployed. The September 30, 2026 Hosting release includes Court-targeted Secure and Influence selection, colored per-player agent counts, full-art views for owned Guild cards, and the responsive map and scrolling title bar. It also includes the earlier account and map UI changes and all 31 original Court illustrations. The deployment script passed 82 backend tests, Flutter analysis and tests, and its live `index.html`, `flutter_bootstrap.js`, and `main.dart.js` matched the production build byte for byte. A game deep link returned HTTP 200. A prior production smoke test passed for guest sign-in, a private lobby, match start, hidden hands, command submission, and termination; its disposable documents were deleted afterward. A full match has not been repeated against this client release.
 
 From the project root, use Node.js 22+, Java 21, Flutter, and a current Firebase CLI:
 
@@ -27,4 +27,12 @@ node functions/security/check-full-games.cjs
 
 Google sign-in and guest linking are implemented in the hosted web client. The Google provider was enabled with display name **ARCS Online** and support email `jeremiah.barrar@gmail.com` through the Firebase CLI. Emulator tests cover linking and return sign-in, but a real Google popup has not been smoke-tested on the hosted build. Browser notifications require a Web Push key from Firebase Cloud Messaging settings, supplied with `--dart-define=FCM_VAPID_KEY=...`. The service worker and turn-notification trigger are in source, but the trigger is not deployed yet. Push remains deferred.
 
-For later web releases, run `npm --prefix functions run check` and `flutter build web --release` **without** `USE_EMULATORS=true`. When backend code or configuration changes, deploy the gameplay Functions, Auth configuration, and Firestore rules/indexes before `npx -y firebase-tools@latest deploy --only hosting --project arcs-online-jeremiah-2026`. A full Functions deploy will also attempt the deferred `notifyTurn` trigger; retry it only when configuring browser push. Android and iPhone are deferred.
+For a production web release from any working directory, run:
+
+```sh
+/Users/jeremiah/projects/arcs/scripts/deploy-web.sh
+```
+
+The script checks backend and Flutter code, builds the Flutter web client without the emulator setting, and uses the current Firebase CLI to deploy **Hosting only** to `arcs-online-jeremiah-2026`. It verifies the configured project and Hosting output directory before starting. It uses `flutter` from your PATH; if needed, set `FLUTTER_BIN=/path/to/flutter`. A signed-in Firebase CLI account with access to the project is required.
+
+When backend code or configuration changes, deploy the gameplay Functions, Auth configuration, and Firestore rules/indexes separately before running this script. A full Functions deploy will also attempt the deferred `notifyTurn` trigger; retry it only when configuring browser push. Android and iPhone are deferred.

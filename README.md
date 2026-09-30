@@ -24,6 +24,10 @@ The app uses local Auth, Firestore, and Functions when `USE_EMULATORS=true`; it 
 
 Google sign-in and guest-account linking are included in the hosted web client. The Firebase project's Google provider and OAuth brand are enabled; a real Google popup still needs a live smoke test. Browser push is optional turn notification and remains deferred. It requires a Firebase Web Push VAPID key supplied as `FCM_VAPID_KEY`; the notification trigger is not deployed yet.
 
+## Deploy the web app
+
+Run `./scripts/deploy-web.sh` from this directory after signing in with the Firebase CLI. It checks the backend and Flutter client, builds without emulator settings, and deploys the web client to the configured production Hosting site. If Flutter is not on your PATH, set `FLUTTER_BIN=/path/to/flutter`. Backend deployments are separate; see the [deployment notes](docs/deployment.md).
+
 ## Verification
 
 `npm --prefix functions run check` compiles the backend and runs 82 rule and state tests, including exact placements for all 12 setups, each base Guild, all six Vox effects, hidden-information projections, timer votes, and scored and unscored full matches. Local emulator checks complete five-chapter matches with 2, 3, and 4 distinct players on two setup cards per count; they also exercise lobby concurrency, private hands, account recovery, and live/async timer votes. `flutter analyze --no-pub`, Flutter tests, and a local web release build pass. A prior disposable production match verified guest sign-in, lobby flow, private hands, one command, and termination; its Firestore documents were removed. Hands-on full-match UI playtesting remains in [next steps](docs/next-steps.md).
