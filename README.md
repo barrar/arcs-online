@@ -56,13 +56,13 @@ npx -y firebase-tools@latest emulators:start --only auth,firestore,functions
 Then start the web client in another terminal:
 
 ~~~sh
-flutter run -d chrome --web-port=7357 --dart-define=USE_EMULATORS=true
+./scripts/flutter.sh run -d chrome --web-port=7357 --dart-define=USE_EMULATORS=true
 ~~~
 
 The emulator flag routes app traffic to local services. Leave it off only when you intend to connect to the configured Firebase project. For a local release build, use the following command and serve build/web with the Firebase Hosting emulator. See [local and deployment notes](docs/deployment.md).
 
 ~~~sh
-flutter build web --release --dart-define=USE_EMULATORS=true
+./scripts/flutter.sh build web --release --dart-define=USE_EMULATORS=true
 ~~~
 
 ## Deploy
@@ -79,7 +79,7 @@ npx -y firebase-tools@latest deploy --only firestore --project arcs-online-jerem
 npx -y firebase-tools@latest deploy --only functions:createLobby,functions:joinLobby,functions:leaveLobby,functions:setReady,functions:startGame,functions:submitGameCommand --project arcs-online-jeremiah-2026
 ~~~
 
-Publish the web client with the repository script:
+Create your private local Firebase configuration as described in [Firebase configuration](docs/firebase-config.md), then publish the web client with the repository script:
 
 ~~~sh
 ./scripts/deploy-web.sh
@@ -87,7 +87,7 @@ Publish the web client with the repository script:
 
 The script verifies the target project, runs the backend and Flutter checks, builds a production web bundle, and deploys **Hosting only**. Set FLUTTER_BIN=/path/to/flutter if Flutter is not on your PATH. It does not publish changed Functions or Firestore rules. The optional browser-push notification Function is outside this release path.
 
-For your own Firebase project, create its web app and regenerate lib/firebase_options.dart with FlutterFire, update .firebaserc and the project ID guard in scripts/deploy-web.sh, then configure Authentication and Hosting for your domain. Firebase client API keys in the repository identify the app; they are not service-account credentials.
+Firebase API-key values are kept in the ignored `.firebase.local.json`, never in tracked source. See [Firebase configuration](docs/firebase-config.md) for setup and rotation. For another Firebase project, update the public app identifiers in `lib/firebase_options.dart`, `scripts/firebase-config.cjs`, and the native templates, plus `.firebaserc` and the deployment script project guard. Keep that project's keys in your own local file.
 
 ## Project map and status
 

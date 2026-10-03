@@ -1,18 +1,14 @@
 // Manual production check. Creates a disposable two-player match, then ends it.
 // Delete the printed game, lobby, and lobby-code documents with the Firebase CLI.
 const assert = require('node:assert/strict');
+const { webConfig } = require('../../scripts/firebase-config.cjs');
 const { randomUUID } = require('node:crypto');
 const { initializeApp, deleteApp } = require('firebase/app');
 const { getAuth, signInAnonymously } = require('firebase/auth');
 const { getFunctions, httpsCallable } = require('firebase/functions');
 const { getFirestore, doc, getDoc } = require('firebase/firestore');
 
-const config = {
-  apiKey: 'REMOVED_FIREBASE_API_KEY',
-  authDomain: 'arcs-online-jeremiah-2026.firebaseapp.com',
-  projectId: 'arcs-online-jeremiah-2026',
-  appId: '1:451692891873:web:a7adc5706e454f0f0d31a0',
-};
+const config = webConfig();
 
 async function client(name) {
   const app = initializeApp(config, `deployed-match-${name}-${Date.now()}`);

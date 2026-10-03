@@ -2,6 +2,7 @@
 // This creates one anonymous guest, joins the lobby, verifies its private
 // Firestore view, then leaves. Do not add this script to automated test runs.
 const assert = require('node:assert/strict');
+const { webConfig } = require('../../scripts/firebase-config.cjs');
 const { initializeApp, deleteApp } = require('firebase/app');
 const { getAuth, signInAnonymously } = require('firebase/auth');
 const { getFunctions, httpsCallable } = require('firebase/functions');
@@ -13,12 +14,7 @@ if (!/^[A-Z2-9]{8}$/.test(code ?? '')) {
   process.exit(2);
 }
 
-const app = initializeApp({
-  apiKey: 'REMOVED_FIREBASE_API_KEY',
-  authDomain: 'arcs-online-jeremiah-2026.firebaseapp.com',
-  projectId: 'arcs-online-jeremiah-2026',
-  appId: '1:451692891873:web:a7adc5706e454f0f0d31a0',
-}, `production-smoke-${Date.now()}`);
+const app = initializeApp(webConfig(), `production-smoke-${Date.now()}`);
 
 async function run() {
   const auth = getAuth(app);

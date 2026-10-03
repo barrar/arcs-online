@@ -45,6 +45,9 @@ if [[ "$configured_project" != "$project_id" || "$hosting_directory" != "build/w
   exit 1
 fi
 
+# Validate and prepare local configuration before any deployment work.
+node scripts/firebase-config.cjs
+
 echo "Checking Firebase CLI access..."
 npx -y firebase-tools@latest projects:list --json >/dev/null
 
@@ -53,11 +56,11 @@ run_flutter pub get
 npm --prefix functions ci
 npm --prefix functions run check
 run_flutter analyze --no-pub
-run_flutter test --no-pub
+run_flutter test --no-pub --dart-define-from-file=.firebase.local.json
 
 # USE_EMULATORS is deliberately omitted so the release talks to production.
 echo "Building the production web client..."
-run_flutter build web --release --no-pub
+run_flutter build web --release --no-pub --dart-define-from-file=.firebase.local.json
 if [[ ! -s build/web/index.html || ! -s build/web/flutter_bootstrap.js ]]; then
   echo "The Flutter web build is incomplete; aborting." >&2
   exit 1

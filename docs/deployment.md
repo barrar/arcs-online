@@ -11,10 +11,10 @@ flutter pub get
 npm --prefix functions ci
 npm --prefix functions run check
 npx -y firebase-tools@latest emulators:start --only auth,firestore,functions
-flutter run -d chrome --web-port=7357 --dart-define=USE_EMULATORS=true
+./scripts/flutter.sh run -d chrome --web-port=7357 --dart-define=USE_EMULATORS=true
 ```
 
-To serve a release build with Firebase Hosting's local rewrite behavior instead, run `flutter build web --release --dart-define=USE_EMULATORS=true`, then `npx -y firebase-tools@latest emulators:start --only hosting` in another terminal. Hosting defaults to `http://127.0.0.1:5000`.
+To serve a release build with Firebase Hosting's local rewrite behavior instead, run `./scripts/flutter.sh build web --release --dart-define=USE_EMULATORS=true`, then `npx -y firebase-tools@latest emulators:start --only hosting` in another terminal. Hosting defaults to `http://127.0.0.1:5000`.
 
 The app uses local Authentication, Firestore and Functions when `USE_EMULATORS=true`. No production match data is changed. To verify emulator access, start the emulators and run:
 
@@ -29,7 +29,7 @@ node functions/security/check-full-games.cjs
 
 Google sign-in and guest linking are implemented in the hosted web client. The Google provider was enabled with display name **ARCS Online** and support email `jeremiah.barrar@gmail.com` through the Firebase CLI. Emulator tests cover linking and return sign-in, but a real Google popup has not been smoke-tested on the hosted build. Browser notifications require a Web Push key from Firebase Cloud Messaging settings, supplied with `--dart-define=FCM_VAPID_KEY=...`. The service worker and turn-notification trigger are in source, but the trigger is not deployed yet. Push remains deferred.
 
-For a production web release from any working directory, run:
+Production builds require the ignored `.firebase.local.json`; copy `config/firebase.example.json` and fill in the three keys. See [Firebase configuration](firebase-config.md). The build prepares the ignored native and notification-worker configuration from that file. For a production web release from any working directory, run:
 
 ```sh
 ./scripts/deploy-web.sh
