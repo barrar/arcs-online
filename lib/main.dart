@@ -30,9 +30,13 @@ Future<void> main() async {
     }
     if (kIsWeb && const String.fromEnvironment('FCM_VAPID_KEY').isNotEmpty) {
       FirebaseMessaging.onMessage.listen((message) {
-        messengerKey.currentState?.showSnackBar(SnackBar(
-          content: Text(message.notification?.body ?? 'Your ARCS table has an update.'),
-        ));
+        messengerKey.currentState?.showSnackBar(
+          SnackBar(
+            content: Text(
+              message.notification?.body ?? 'Your ARCS table has an update.',
+            ),
+          ),
+        );
       });
       FirebaseMessaging.onMessageOpenedApp.listen((message) {
         final gameId = message.data['gameId'];
@@ -44,6 +48,7 @@ Future<void> main() async {
     runApp(
       MaterialApp(
         theme: arcsTheme(),
+        builder: withReadableText,
         home: Scaffold(
           body: Center(
             child: Text('ARCS could not initialize Firebase: $error'),
@@ -63,9 +68,14 @@ final router = GoRouter(
       path: '/lobby/:id',
       builder: (_, state) => LobbyPage(lobbyId: state.pathParameters['id']!),
     ),
-    GoRoute(path: '/game/:id', builder: (_, state) =>
-      GamePage(key: ValueKey(state.pathParameters['id']!),
-        gameId: state.pathParameters['id']!, service: service)),
+    GoRoute(
+      path: '/game/:id',
+      builder: (_, state) => GamePage(
+        key: ValueKey(state.pathParameters['id']!),
+        gameId: state.pathParameters['id']!,
+        service: service,
+      ),
+    ),
     GoRoute(
       path: '/join/:code',
       builder: (_, state) => JoinLinkPage(code: state.pathParameters['code']!),
@@ -80,6 +90,7 @@ class ArcsApp extends StatelessWidget {
     title: 'ARCS Online',
     debugShowCheckedModeBanner: false,
     theme: arcsTheme(),
+    builder: withReadableText,
     routerConfig: router,
     scaffoldMessengerKey: messengerKey,
   );
@@ -175,22 +186,36 @@ class _HomePageState extends State<HomePage> {
               const Spacer(),
               if (const String.fromEnvironment('FCM_VAPID_KEY').isNotEmpty)
                 TextButton.icon(
-                  onPressed: _enablingTurnAlerts ? null : () async {
-                    setState(() => _enablingTurnAlerts = true);
-                    try {
-                      await service.enableTurnAlerts();
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Turn alerts enabled on this browser.')));
-                      }
-                    } catch (error) {
-                      if (context.mounted) await _showError(context, error);
-                    } finally {
-                      if (mounted) setState(() => _enablingTurnAlerts = false);
-                    }
-                  },
-                  icon: _enablingTurnAlerts ? const SizedBox(width: 16, height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.notifications_active_outlined),
+                  onPressed: _enablingTurnAlerts
+                      ? null
+                      : () async {
+                          setState(() => _enablingTurnAlerts = true);
+                          try {
+                            await service.enableTurnAlerts();
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Turn alerts enabled on this browser.',
+                                  ),
+                                ),
+                              );
+                            }
+                          } catch (error) {
+                            if (context.mounted)
+                              await _showError(context, error);
+                          } finally {
+                            if (mounted)
+                              setState(() => _enablingTurnAlerts = false);
+                          }
+                        },
+                  icon: _enablingTurnAlerts
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.notifications_active_outlined),
                   label: const Text('Enable turn alerts'),
                 ),
               TextButton.icon(
@@ -737,8 +762,11 @@ class _LobbyPageState extends State<LobbyPage> {
                     .where((seat) => seat['uid'] == uid)
                     .firstOrNull;
                 final host = data['hostId'] == uid;
-                final canStart = host && seats.length >= 2 &&
-                    seats.every((seat) => seat['ready'] == true) && data['status'] == 'waiting';
+                final canStart =
+                    host &&
+                    seats.length >= 2 &&
+                    seats.every((seat) => seat['ready'] == true) &&
+                    data['status'] == 'waiting';
                 return ListView(
                   padding: const EdgeInsets.all(24),
                   children: [
@@ -912,25 +940,51 @@ class _LobbyPageState extends State<LobbyPage> {
                                 ),
                               if (host && data['status'] == 'waiting')
                                 OutlinedButton(
-                                  onPressed: !canStart || _starting || _updatingReady ? null : () async {
-                                    setState(() => _starting = true);
-                                    try {
-                                      await service.startGame(widget.lobbyId);
-                                      if (context.mounted) context.go('/game/${widget.lobbyId}');
-                                    } catch (error) {
-                                      if (context.mounted) await _showError(context, error);
-                                    } finally {
-                                      if (mounted) setState(() => _starting = false);
-                                    }
-                                  },
-                                  child: _starting ? const Row(mainAxisSize: MainAxisSize.min, children: [
-                                    SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                                    SizedBox(width: 8), Text('Starting...'),
-                                  ]) : const Text('Start match'),
+                                  onPressed:
+                                      !canStart || _starting || _updatingReady
+                                      ? null
+                                      : () async {
+                                          setState(() => _starting = true);
+                                          try {
+                                            await service.startGame(
+                                              widget.lobbyId,
+                                            );
+                                            if (context.mounted)
+                                              context.go(
+                                                '/game/${widget.lobbyId}',
+                                              );
+                                          } catch (error) {
+                                            if (context.mounted)
+                                              await _showError(context, error);
+                                          } finally {
+                                            if (mounted)
+                                              setState(() => _starting = false);
+                                          }
+                                        },
+                                  child: _starting
+                                      ? const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            ),
+                                            SizedBox(width: 8),
+                                            Text('Starting...'),
+                                          ],
+                                        )
+                                      : const Text('Start match'),
                                 ),
                               if (me != null && data['status'] == 'playing')
-                                OutlinedButton.icon(onPressed: () => context.go('/game/${widget.lobbyId}'),
-                                  icon: const Icon(Icons.play_arrow), label: const Text('Enter match')),
+                                OutlinedButton.icon(
+                                  onPressed: () =>
+                                      context.go('/game/${widget.lobbyId}'),
+                                  icon: const Icon(Icons.play_arrow),
+                                  label: const Text('Enter match'),
+                                ),
                               if (me != null && data['status'] == 'waiting')
                                 TextButton(
                                   onPressed: _updatingReady
@@ -979,97 +1033,131 @@ Future<void> _accountDialog(BuildContext context) async {
   final email = TextEditingController();
   final password = TextEditingController();
   final user = service.auth.currentUser;
-  final linkedProviders = user?.providerData.map((provider) => provider.providerId).toSet() ?? <String>{};
+  final linkedProviders =
+      user?.providerData.map((provider) => provider.providerId).toSet() ??
+      <String>{};
   var busy = false;
   await showDialog<void>(
     context: context,
-    builder: (dialogContext) => StatefulBuilder(builder: (dialogContext, update) {
-      Future<void> run(Future<void> Function() action) async {
-        if (busy) return;
-        update(() => busy = true);
-        try {
-          await action();
-          if (dialogContext.mounted) Navigator.pop(dialogContext);
-        } catch (error) {
-          if (dialogContext.mounted) await _showError(dialogContext, error);
-        } finally {
-          if (dialogContext.mounted) update(() => busy = false);
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (dialogContext, update) {
+        Future<void> run(Future<void> Function() action) async {
+          if (busy) return;
+          update(() => busy = true);
+          try {
+            await action();
+            if (dialogContext.mounted) Navigator.pop(dialogContext);
+          } catch (error) {
+            if (dialogContext.mounted) await _showError(dialogContext, error);
+          } finally {
+            if (dialogContext.mounted) update(() => busy = false);
+          }
         }
-      }
-      return AlertDialog(
-      title: const Text('Keep your games'),
-      content: SizedBox(
-        width: 370,
-        child: SingleChildScrollView(child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              user?.isAnonymous == true
-                ? 'Link this guest to keep its games. To return to an existing account, sign in below; that replaces this guest session.'
-                : 'Your games are saved to this account. You can link another sign-in method or sign out.',
-              style: TextStyle(color: muted),
-            ),
-            const SizedBox(height: 17),
-            TextField(
-              controller: email,
-              decoration: const InputDecoration(labelText: 'Email'),
-              keyboardType: TextInputType.emailAddress,
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: password,
-              decoration: const InputDecoration(labelText: 'Password'),
-              obscureText: true,
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: busy || linkedProviders.contains('password')
-                  ? null : () => run(() => service.linkEmail(email.text, password.text)),
-                child: const Text('Link email account'),
+
+        return AlertDialog(
+          title: const Text('Keep your games'),
+          content: SizedBox(
+            width: 370,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    user?.isAnonymous == true
+                        ? 'Link this guest to keep its games. To return to an existing account, sign in below; that replaces this guest session.'
+                        : 'Your games are saved to this account. You can link another sign-in method or sign out.',
+                    style: TextStyle(color: muted),
+                  ),
+                  const SizedBox(height: 17),
+                  TextField(
+                    controller: email,
+                    decoration: const InputDecoration(labelText: 'Email'),
+                    keyboardType: TextInputType.emailAddress,
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: password,
+                    decoration: const InputDecoration(labelText: 'Password'),
+                    obscureText: true,
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: busy || linkedProviders.contains('password')
+                          ? null
+                          : () => run(
+                              () =>
+                                  service.linkEmail(email.text, password.text),
+                            ),
+                      child: const Text('Link email account'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: busy || linkedProviders.contains('google.com')
+                          ? null
+                          : () => run(service.linkGoogle),
+                      child: const Text('Link Google account'),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Already have an account?',
+                    style: TextStyle(color: muted),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: busy ? null : () => run(service.signInGoogle),
+                      child: const Text('Sign in with Google'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: busy
+                          ? null
+                          : () => run(
+                              () => service.signInEmail(
+                                email.text,
+                                password.text,
+                              ),
+                            ),
+                      child: const Text('Sign in with email'),
+                    ),
+                  ),
+                  if (user?.isAnonymous == false) ...[
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: busy ? null : () => run(service.auth.signOut),
+                      child: const Text('Sign out'),
+                    ),
+                  ],
+                  if (busy)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 12),
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: busy || linkedProviders.contains('google.com')
-                  ? null : () => run(service.linkGoogle),
-                child: const Text('Link Google account'),
-              ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: busy ? null : () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
             ),
-            const SizedBox(height: 18),
-            const Divider(),
-            const SizedBox(height: 8),
-            const Text('Already have an account?', style: TextStyle(color: muted)),
-            const SizedBox(height: 8),
-            SizedBox(width: double.infinity, child: OutlinedButton(
-              onPressed: busy ? null : () => run(service.signInGoogle),
-              child: const Text('Sign in with Google'),
-            )),
-            const SizedBox(height: 8),
-            SizedBox(width: double.infinity, child: OutlinedButton(
-              onPressed: busy ? null : () => run(() => service.signInEmail(email.text, password.text)),
-              child: const Text('Sign in with email'),
-            )),
-            if (user?.isAnonymous == false) ...[
-              const SizedBox(height: 12),
-              TextButton(onPressed: busy ? null : () => run(service.auth.signOut),
-                child: const Text('Sign out')),
-            ],
-            if (busy) const Padding(padding: EdgeInsets.only(top: 12),
-              child: CircularProgressIndicator(strokeWidth: 2)),
           ],
-        )),
-      ),
-      actions: [
-        TextButton(
-          onPressed: busy ? null : () => Navigator.pop(dialogContext),
-          child: const Text('Close'),
-        ),
-      ],
-    ); }),
+        );
+      },
+    ),
   );
   email.dispose();
   password.dispose();

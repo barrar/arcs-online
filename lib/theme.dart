@@ -31,7 +31,7 @@ ThemeData arcsTheme() {
         letterSpacing: 1,
       ),
       titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-      bodyMedium: TextStyle(fontSize: 15, height: 1.45),
+      bodyMedium: TextStyle(fontSize: 16, height: 1.45),
     ),
     cardTheme: CardThemeData(
       color: panel,
@@ -61,6 +61,39 @@ ThemeData arcsTheme() {
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
     ),
+  );
+}
+
+/// Keeps small labels readable without reducing a user's larger text setting.
+class MinimumTextScaler extends TextScaler {
+  const MinimumTextScaler(this.base, {this.minimum = 16});
+
+  final TextScaler base;
+  final double minimum;
+
+  @override
+  double scale(double fontSize) =>
+      math.max(minimum, base.scale(math.max(fontSize, minimum)));
+
+  @override
+  // ignore: deprecated_member_use
+  double get textScaleFactor => base.textScaleFactor;
+
+  @override
+  bool operator ==(Object other) =>
+      other is MinimumTextScaler &&
+      other.base == base &&
+      other.minimum == minimum;
+
+  @override
+  int get hashCode => Object.hash(base, minimum);
+}
+
+Widget withReadableText(BuildContext context, Widget? child) {
+  final media = MediaQuery.of(context);
+  return MediaQuery(
+    data: media.copyWith(textScaler: MinimumTextScaler(media.textScaler)),
+    child: child ?? const SizedBox.shrink(),
   );
 }
 

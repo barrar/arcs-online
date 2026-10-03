@@ -1,9 +1,10 @@
 import { randomInt } from 'node:crypto';
 import { actionCard } from './action_cards';
-import type { Resource, SystemId } from './board';
+import { createBoard, type Resource, type SystemId } from './board';
 import { endTurn, passInitiative, playCard, spendPip, type PlayMode, type StandardAction, type Suit } from './chapter';
+import { cardById } from './court';
 import { applyStandardAction, discardResource, type StandardActionInput } from './game_actions';
-import { placePiece, supplyOf } from './game_actions';
+import { placePiece, supplyOf, systemController } from './game_actions';
 import { assignBattleHits, beginBattle, finishBattleRaid, raidBattle, rerollSkirmish,
   type BattleRoll, type HitAssignment, type RaidTarget } from './game_battle';
 import { applyGuildAction, applyGuildPrelude, guildBaseAction, type GuildAction, type GuildPrelude } from './game_guild';
@@ -27,6 +28,7 @@ export type GameCommand =
   | { kind: 'rearrange-resources'; slots: (Resource | null)[] }
   | { kind: 'recover'; gateId: SystemId }
   | { kind: 'end-turn' }
+  | { kind: 'auto-finish' }
   | { kind: 'reroll-skirmish'; faceIndexes: number[] }
   | { kind: 'assign-hits'; assignment: HitAssignment }
   | { kind: 'raid'; target: RaidTarget }
@@ -220,12 +222,101 @@ function finishTurn(state: GameState, uid: string, now: number, random: Random):
   return `${state.players[uid].name} ended their turn.`;
 }
 
+function hasAvailableAction(state: GameState, uid: string): boolean {
+  if (state.round.remainingPips < 1) return false;
+  const player = state.players[uid];
+  const guilds = player.guilds;
+  const board = createBoard(state.activeClusters);
+  const entries = Object.entries(state.systems) as [SystemId, typeof state.systems[SystemId]][];
+  const pieces = entries.flatMap(([, inSystem]) => inSystem);
+  const hasMove = entries.some(([systemId, inSystem]) =>
+    board.adjacency[systemId]?.length > 0 && inSystem.some((piece) => piece.owner === uid && piece.kind === 'ship'));
+  const hasRepair = pieces.some((piece) => piece.owner === uid && piece.damaged);
+  const hasInfluence = state.courtRow.length > 0 && supplyOf(state, uid, 'agent') > 0;
+  const hasSecure = state.courtRow.some((slot) => {
+    const loyal = slot.agents[uid] ?? 0;
+    return loyal > 0 && Object.entries(slot.agents).every(([owner, count]) => owner === uid || count < loyal);
+  });
+  const hasBattle = entries.some(([, inSystem]) =>
+    inSystem.some((piece) => piece.owner === uid && piece.kind === 'ship') &&
+    inSystem.some((piece) => piece.owner !== uid));
+  const hasTax = entries.some(([systemId, inSystem]) =>
+    inSystem.some((piece) => piece.kind === 'city' && !state.turn.taxedCities.includes(piece.id) &&
+      (piece.owner === uid || systemController(state, systemId) === uid)));
+  const hasBuildingSite = entries.some(([systemId, inSystem]) => {
+    const planet = board.planets[systemId];
+    return !!planet && inSystem.some((piece) => piece.owner === uid) &&
+      inSystem.filter((piece) => piece.kind === 'city' || piece.kind === 'starport').length < planet.slots;
+  });
+  const hasBuild =
+    (supplyOf(state, uid, 'ship') > 0 && entries.some(([, inSystem]) =>
+      inSystem.some((piece) => piece.owner === uid && piece.kind === 'starport' &&
+        !state.turn.builtAtStarports.includes(piece.id)))) ||
+    (hasBuildingSite && (supplyOf(state, uid, 'city') > 0 || supplyOf(state, uid, 'starport') > 0));
+  const weaponIcons = player.resources.filter((resource) => resource === 'weapon').length +
+    guilds.filter((cardId) => cardById[cardId]?.suit === 'weapon').length;
+  const hasAbduct = guilds.includes('ARCS-BC14') && state.courtRow.some((slot) =>
+    Object.entries(slot.agents).filter(([owner]) => owner !== uid)
+      .reduce((sum, [, count]) => sum + count, 0) < weaponIcons);
+  const hasTrade = guilds.includes('ARCS-BC23') && entries.some(([systemId, inSystem]) => {
+    const resource = board.planets[systemId]?.resource;
+    if (!resource || systemController(state, systemId) !== uid) return false;
+    return inSystem.some((piece) => {
+      if (piece.kind !== 'city' || piece.owner === uid) return false;
+      const rivalResources = state.players[piece.owner].resources;
+      return rivalResources.includes(resource) && player.resources.some((held) => held !== null && !rivalResources.includes(held));
+    });
+  });
+  const possible = (action: StandardAction): boolean => {
+    switch (action) {
+      case 'tax': return hasTax || hasTrade;
+      case 'build': return hasBuild || guilds.includes('ARCS-BC02') || guilds.includes('ARCS-BC09') ||
+        (guilds.includes('ARCS-BC12') && player.captiveOwners.length > 0);
+      case 'move': return hasMove;
+      case 'repair': return hasRepair;
+      case 'influence': return hasInfluence || (guilds.includes('ARCS-BC12') && player.captiveOwners.length > 0);
+      case 'secure': return hasSecure;
+      case 'battle': return hasBattle || hasAbduct;
+    }
+  };
+  const play = state.round.plays.at(-1)!;
+  const suit = play.mode === 'copy' ? state.round.lead!.card.suit : play.card.suit;
+  if (suitActions[suit].some(possible) || (state.turn.weaponEnabled && possible('battle'))) return true;
+
+  // The Prelude can still offer a resource or Guild action before the first pip.
+  if (!state.turn.preludeOpen) return false;
+  const preludeGuilds = new Set([
+    'ARCS-BC02', 'ARCS-BC03', 'ARCS-BC04', 'ARCS-BC05', 'ARCS-BC06', 'ARCS-BC08',
+    'ARCS-BC09', 'ARCS-BC10', 'ARCS-BC11', 'ARCS-BC12', 'ARCS-BC13', 'ARCS-BC14',
+    'ARCS-BC15', 'ARCS-BC16', 'ARCS-BC17', 'ARCS-BC20', 'ARCS-BC23', 'ARCS-BC24',
+  ]);
+  if (guilds.some((cardId) => preludeGuilds.has(cardId) &&
+    !state.turn.securedThisPrelude.includes(cardId) && !state.turn.usedGuilds.includes(cardId))) return true;
+  const loyalGuild: Record<Resource, string> = {
+    material: 'ARCS-BC01', fuel: 'ARCS-BC07', weapon: 'ARCS-BC15',
+    psionic: 'ARCS-BC19', relic: 'ARCS-BC21',
+  };
+  const resources: Resource[] = ['material', 'fuel', 'weapon', 'relic', 'psionic'];
+  return player.resources.some((held) => held && resources.some((as) =>
+    (held === as || guilds.includes(loyalGuild[as])) &&
+    (!player.outrage.includes(as) || guilds.includes(loyalGuild[as])) &&
+    (as === 'weapon' || (as === 'material' && (possible('build') || possible('repair'))) ||
+      (as === 'fuel' && possible('move')) || (as === 'relic' && possible('secure')) ||
+      (as === 'psionic' && suitActions[state.round.lead!.card.suit].some(possible)))));
+}
+
 export function applyGameCommand(source: GameState, uid: string, commandId: string, command: GameCommand,
   now: number, random: Random = randomInt): CommandResult {
   if (!source.order.includes(uid)) throw new Error('Only seated players may command this match.');
   if (source.recentCommands.includes(commandId)) return { state: source, summary: 'Already applied.', changed: false };
   if (source.status !== 'playing') throw new Error('This match is no longer active.');
   const state = structuredClone(source);
+  if (command.kind === 'auto-finish' && (
+    state.round.actorUid !== uid || !state.round.playedThisTurn || hasAvailableAction(state, uid) ||
+    state.pendingBattle || state.pendingVox.length > 0 || state.pendingFarseers ||
+    state.pendingRecoveryUid || state.pendingResourceChoices.length > 0 ||
+    state.mulliganPendingUid || (state.turn.canRearrange && state.round.remainingPips > 0)
+  )) return { state: source, summary: 'The turn still has a choice.', changed: false };
   let summary: string;
   if (command.kind === 'vote-kick') {
     const voted = castKickVote({ memberIds: state.order, actorUid: currentDecisionUid(state)!,
@@ -337,6 +428,7 @@ export function applyGameCommand(source: GameState, uid: string, commandId: stri
         break;
       }
       case 'end-turn': summary = finishTurn(state, uid, now, random); break;
+      case 'auto-finish': summary = finishTurn(state, uid, now, random); break;
       case 'reroll-skirmish': rerollSkirmish(state, uid, command.faceIndexes, random);
         summary = `${state.players[uid].name} rerolled ${command.faceIndexes.length} skirmish dice.${battleSummary(state)}`; break;
       case 'assign-hits': assignBattleHits(state, uid, command.assignment);
@@ -359,6 +451,16 @@ export function applyGameCommand(source: GameState, uid: string, commandId: stri
         break;
       }
     }
+  }
+  // Advance when no legal action remains, even if unused pips remain. Mandatory
+  // effects resolve first. With no pips left, an optional resource rearrangement
+  // must not leave the player waiting on an End turn click.
+  if (state.status === 'playing' && state.round.actorUid === uid && state.round.playedThisTurn &&
+    !hasAvailableAction(state, uid) && !state.pendingBattle && state.pendingVox.length === 0 &&
+    !state.pendingFarseers && !state.pendingRecoveryUid && state.pendingResourceChoices.length === 0 &&
+    (!state.turn.canRearrange || state.round.remainingPips === 0) &&
+    command.kind !== 'end-turn' && command.kind !== 'recover') {
+    summary += ` ${finishTurn(state, uid, now, random)}`;
   }
   state.updatedAt = now;
   state.version++;

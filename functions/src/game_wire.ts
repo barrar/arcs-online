@@ -75,6 +75,7 @@ export const gameCommandSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('rearrange-resources'), slots: z.array(resource.nullable()).min(2).max(6) }),
   z.object({ kind: z.literal('recover'), gateId: systemId }),
   z.object({ kind: z.literal('end-turn') }),
+  z.object({ kind: z.literal('auto-finish') }),
   z.object({ kind: z.literal('reroll-skirmish'), faceIndexes: z.array(z.number().int().min(0).max(17)).min(1).max(6) }),
   z.object({ kind: z.literal('assign-hits'), assignment: z.object({ own: z.array(z.string()),
     ships: z.array(z.string()), buildings: z.array(z.string()),

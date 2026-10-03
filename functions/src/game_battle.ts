@@ -42,7 +42,8 @@ export function beginBattle(state: GameState, uid: string, command: BattleRoll,
   if (assault + skirmish + raid < 1 || assault + skirmish + raid > attackingShips.length + extra) {
     throw new Error('You cannot roll more dice than your attacking ships allow.');
   }
-  const defenderBuildingsHere = pieces.some((piece) => piece.owner === command.defenderUid && piece.kind !== 'ship');
+  const defenderBuildingsHere = pieces.some((piece) => piece.owner === command.defenderUid &&
+    (piece.kind === 'city' || piece.kind === 'starport'));
   const defenderBuildingsAnywhere = Object.values(state.systems).some((system) => system.some((piece) =>
     piece.owner === command.defenderUid && (piece.kind === 'city' || piece.kind === 'starport')));
   if (raid > 0 && !defenderBuildingsHere && defenderBuildingsAnywhere) {

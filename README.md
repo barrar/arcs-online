@@ -1,33 +1,104 @@
 # ARCS Online
 
-A Flutter web adaptation of the **ARCS base game** with Firebase multiplayer lobbies and a server-validated match engine. The first release is English base-game play for 2–4 players. Android, iPhone, Leaders & Lore and campaign content are deferred.
+**A multiplayer adaptation of the ARCS base game, built for the web with Flutter, Firebase, and TypeScript.**
 
-The web app is live at [arcs-online-jeremiah-2026.web.app](https://arcs-online-jeremiah-2026.web.app/). The production Firebase project is `arcs-online-jeremiah-2026` in `us-west1`.
+[Play the hosted app](https://arcs.bendtrailmaps.com) · [Rules coverage](docs/rules-coverage.md) · [Court artwork](docs/court-art.md)
 
-Players can sign in as guests, link email/password accounts, discover public lobbies or join private invite codes, ready up, and start live or asynchronous games. A match uses the [official August 27, 2025 base rulebook](https://buriedgiant.com/arcs/Arcs_Base_Rulebook.pdf), [official rules and errata](https://rules.buriedgiant.com/), and [official card library](https://cards.buriedgiant.com/). The authoritative game state and hidden hands remain on the server. Firestore exposes only public match information and each player's own hand. Commands run in atomic transactions; turn history and saved games survive reconnects.
+ARCS Online brings a 2–4-player tabletop game into a browser without reducing it to a local hot-seat app. Players can create public or private lobbies, join by invite code, play live or asynchronously, and return to a saved match. The game engine validates actions on the server; each player sees the shared board and their own hand while other hands stay private.
 
-The web interface includes a zoomable Reach map, a turn prompt that jumps to the current decision, readable private action cards, illustrated Court cards, battle resolution, ambition scoring, recent moves, and timer-kick voting. Every setup names four active gate regions Vega, Sol, Canopus, and Orion, with any fifth gate named Andromeda or Sirius; each region keeps its planet names. The official numbered clusters and starting positions remain unchanged in saved games and rules logic. The map uses separate colored icons for ships, cities, and starports. Card and piece artwork from the user's offline Haunt Roll Fail reference is **not redistributed**; the app uses [original generated Court illustrations](docs/court-art.md), code-drawn UI visuals, and attributed card text. See the [UI research](docs/ui-research.md), [reference audit](docs/reference-audit.md), and [third-party notices](THIRD_PARTY_NOTICES.md).
+The project implements the English **base game**. The rules baseline is the [official base rulebook](https://buriedgiant.com/arcs/Arcs_Base_Rulebook.pdf), [rules and errata](https://rules.buriedgiant.com/), and [card library](https://cards.buriedgiant.com/). Every match records its rules version.
+
+## What is in the app
+
+- **Multiplayer sessions:** guest accounts, email/password and Google account linking, public lobby discovery, private invite codes, ready status, reconnects, and saved games.
+- **Match flow:** 2–4-player starting setups, action-card rounds, Prelude and resource actions, movement, building, taxing, Court influence and security, combat and raids, ambitions, chapter scoring, and victory.
+- **Readable game UI:** a zoomable map, distinct ship/city/starport markers, per-player ship counts in crowded systems, illustrated Court cards, contextual action menus, battle dice results, and event history.
+- **Flexible pace:** short live turn timers or 24/48-hour asynchronous turns. An overdue-player removal requires unanimous approval from the other seated players and ends the match without an official winner.
+
+The interface uses original Court illustrations and code-drawn pieces and resources. The board's creative place names are presentation labels; saved games and rules logic retain the official system IDs. See [art provenance](docs/court-art.md), the [reference audit](docs/reference-audit.md), and [third-party notices](THIRD_PARTY_NOTICES.md).
+
+## Architecture
+
+~~~mermaid
+flowchart LR
+    P[Flutter web client] --> A[Firebase Authentication]
+    P --> V[Firestore public game and lobby views]
+    P --> H[Firestore: player's private hand]
+    P --> C[Callable game commands]
+    C --> R[TypeScript rules engine]
+    R --> S[Private authoritative game state]
+    R --> V
+    R --> H
+~~~
+
+The client submits an intention, such as *move these ships* or *influence this Court card*. A callable Function checks the current turn and rule constraints, applies the command in a Firestore transaction, and updates the views players are allowed to read. The server owns hidden hands and authoritative state. Command IDs make retries idempotent, and an event stream records the resulting moves. Firestore rules prevent clients from writing game state directly or reading another player's hand.
+
+The rules engine is separate from Flutter widgets, so setup, actions, combat, Court effects, scoring, and multiplayer access can be checked independently. [Rules coverage](docs/rules-coverage.md) maps each major rule family to its official source and describes the verification already performed.
 
 ## Run locally
 
-Use Flutter, Node.js 22+, Java 21, and the Firebase CLI. From this directory:
+You need a recent Flutter SDK, Node.js 22+, Java 21 for the Firestore emulator, and the Firebase CLI. Chrome is used for the Flutter web development target.
 
-```sh
+~~~sh
+git clone https://github.com/barrar/arcs-online.git
+cd arcs-online
 flutter pub get
 npm --prefix functions ci
-npm --prefix functions run check
+npm --prefix functions run build
+~~~
+
+Start Firebase's local Auth, Firestore, and Functions emulators in one terminal:
+
+~~~sh
 npx -y firebase-tools@latest emulators:start --only auth,firestore,functions
+~~~
+
+Then start the web client in another terminal:
+
+~~~sh
 flutter run -d chrome --web-port=7357 --dart-define=USE_EMULATORS=true
-```
+~~~
 
-The app uses local Auth, Firestore, and Functions when `USE_EMULATORS=true`; it does not change production data. [Deployment and local setup notes](docs/deployment.md) explain emulator checks and optional configuration.
+The emulator flag routes app traffic to local services. Leave it off only when you intend to connect to the configured Firebase project. For a local release build, use the following command and serve build/web with the Firebase Hosting emulator. See [local and deployment notes](docs/deployment.md).
 
-Google sign-in and guest-account linking are included in the hosted web client. The Firebase project's Google provider and OAuth brand are enabled; a real Google popup still needs a live smoke test. Browser push is optional turn notification and remains deferred. It requires a Firebase Web Push VAPID key supplied as `FCM_VAPID_KEY`; the notification trigger is not deployed yet.
+~~~sh
+flutter build web --release --dart-define=USE_EMULATORS=true
+~~~
 
-## Deploy the web app
+## Deploy
 
-Run `./scripts/deploy-web.sh` from this directory after signing in with the Firebase CLI. It checks the backend and Flutter client, builds without emulator settings, and deploys the web client to the configured production Hosting site. If Flutter is not on your PATH, set `FLUTTER_BIN=/path/to/flutter`. Backend deployments are separate; see the [deployment notes](docs/deployment.md).
+The checked-in Firebase configuration and deployment script target **arcs-online-jeremiah-2026**. You need access to that project and a signed-in Firebase CLI account. Its Authentication providers must include Anonymous, Email/Password, and Google. Cloud Functions require a billing-enabled Firebase project.
 
-## Verification
+Deploy rules and gameplay Functions when backend code changes:
 
-`npm --prefix functions run check` compiles the backend and runs 82 rule and state tests, including exact placements for all 12 setups, each base Guild, all six Vox effects, hidden-information projections, timer votes, and scored and unscored full matches. Local emulator checks complete five-chapter matches with 2, 3, and 4 distinct players on two setup cards per count; they also exercise lobby concurrency, private hands, account recovery, and live/async timer votes. `flutter analyze --no-pub`, Flutter tests, and a local web release build pass. A prior disposable production match verified guest sign-in, lobby flow, private hands, one command, and termination; its Firestore documents were removed. Hands-on full-match UI playtesting remains in [next steps](docs/next-steps.md).
+~~~sh
+npx -y firebase-tools@latest login
+npm --prefix functions ci
+npm --prefix functions run build
+npx -y firebase-tools@latest deploy --only firestore --project arcs-online-jeremiah-2026
+npx -y firebase-tools@latest deploy --only functions:createLobby,functions:joinLobby,functions:leaveLobby,functions:setReady,functions:startGame,functions:submitGameCommand --project arcs-online-jeremiah-2026
+~~~
+
+Publish the web client with the repository script:
+
+~~~sh
+./scripts/deploy-web.sh
+~~~
+
+The script verifies the target project, runs the backend and Flutter checks, builds a production web bundle, and deploys **Hosting only**. Set FLUTTER_BIN=/path/to/flutter if Flutter is not on your PATH. It does not publish changed Functions or Firestore rules. The optional browser-push notification Function is outside this release path.
+
+For your own Firebase project, create its web app and regenerate lib/firebase_options.dart with FlutterFire, update .firebaserc and the project ID guard in scripts/deploy-web.sh, then configure Authentication and Hosting for your domain. Firebase client API keys in the repository identify the app; they are not service-account credentials.
+
+## Project map and status
+
+| Path | Purpose |
+| --- | --- |
+| lib/ | Flutter screens, board layout, cards, and Firebase client |
+| functions/src/ | Typed game state, rules, validated commands, and callable Functions |
+| functions/security/ | Emulator integration and access checks |
+| assets/ | Court card catalog and original illustrations |
+| docs/ | Rule coverage, art provenance, research, and deployment notes |
+
+The repository includes rule and integration checks; npm --prefix functions run check runs the backend suite, and flutter analyze plus flutter test check the client. A complete hands-on browser playthrough at each player count and a live Google sign-in popup check remain on the [next-steps list](docs/next-steps.md). Android and iPhone builds, browser push, Leaders & Lore, and campaign content are deferred.
+
+ARCS Online is an unofficial fan project and is not affiliated with the publisher. ARCS names and rules belong to their respective owners; third-party source attribution is collected in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
