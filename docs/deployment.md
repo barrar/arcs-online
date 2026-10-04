@@ -38,3 +38,11 @@ Production builds require the ignored `.firebase.local.json`; copy `config/fireb
 The script checks backend and Flutter code, builds the Flutter web client without the emulator setting, and uses the current Firebase CLI to deploy **Hosting only** to `arcs-online-jeremiah-2026`. It verifies the configured project and Hosting output directory before starting. It uses `flutter` from your PATH; if needed, set `FLUTTER_BIN=/path/to/flutter`. A signed-in Firebase CLI account with access to the project is required.
 
 When backend code or configuration changes, deploy the gameplay Functions, Auth configuration, and Firestore rules/indexes separately before running this script. A full Functions deploy will also attempt the deferred `notifyTurn` trigger; retry it only when configuring browser push. Android and iPhone are deferred.
+
+## Firebase key rotation
+
+All three original Firebase client API keys were revoked after deploying and verifying their replacements. API-key values remain in the ignored owner-only `.firebase.local.json`; no key values belong in source or history. The replacement web key allows the ARCS custom/Firebase domains and local development origins; the iOS key allows `com.jeremiah.arcsOnline`. Android retains API restrictions while mobile signing remains deferred. All replacements retain the existing Firebase API allowlist for compatibility, excluding Generative Language.
+
+The replacement web release passed 29 Flutter tests and a production build. Both live domains matched the build. Live API checks passed for anonymous sign-in, token refresh, guest/email linking, email sign-in, private lobby operations, and Firestore access. Temporary test users and lobby documents were deleted. Google popup and browser-push checks remain deferred. Existing browser tabs may need a reload after revocation.
+
+Hosting now revalidates bootstrap, bundle, and worker files to reduce stale-key caching. The game backend was not redeployed during the key rotation. Its existing `auto_turn.test.ts` resource-rearrangement assertion currently fails; the other 85 backend tests passed. Flutter analysis has 66 informational style diagnostics in existing app files.
